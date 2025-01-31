@@ -65,23 +65,13 @@ class EXIV2API EpsImage : public Image {
     @brief Not supported.
         Calling this function will throw an instance of Error(ErrorCode::kerInvalidSettingForImage).
    */
-  void setComment(std::string_view comment) override;
+  void setComment(const std::string&) override;
   //@}
 
   //! @name Accessors
   //@{
   [[nodiscard]] std::string mimeType() const override;
   //@}
-
-  ~EpsImage() override = default;
-  //! @name NOT Implemented
-  //@{
-  //! Copy constructor
-  EpsImage(const EpsImage&) = delete;
-  //! Assignment operator
-  EpsImage& operator=(const EpsImage&) = delete;
-  //@}
-
 };  // class EpsImage
 
 // *****************************************************************************

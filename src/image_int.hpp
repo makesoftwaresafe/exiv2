@@ -12,10 +12,14 @@
 #include <ostream>  // for ostream, basic_ostream::put
 #include <string>
 
-#if (defined(__GNUG__) || defined(__GNUC__)) || defined(__clang__)
-#define ATTRIBUTE_FORMAT_PRINTF __attribute__((format(printf, 1, 0)))
+#if __has_include(<format>)
+#include <format>
+#endif
+#ifndef EXV_HAVE_STD_FORMAT
+#include <fmt/core.h>
+#define stringFormat fmt::format
 #else
-#define ATTRIBUTE_FORMAT_PRINTF
+#define stringFormat std::format
 #endif
 
 // *****************************************************************************
@@ -23,11 +27,6 @@
 namespace Exiv2::Internal {
 // *****************************************************************************
 // class definitions
-
-/*!
-  @brief format a string in the pattern of \em sprintf \em .
- */
-std::string stringFormat(const char* format, ...) ATTRIBUTE_FORMAT_PRINTF;
 
 /*!
  * @brief Helper struct for binary data output via @ref binaryToString.
@@ -49,9 +48,8 @@ template <typename T>
 std::ostream& operator<<(std::ostream& stream, const binaryToStringHelper<T>& binToStr) {
   for (size_t i = 0; i < binToStr.buf_.size(); ++i) {
     auto c = static_cast<int>(binToStr.buf_.at(i));
-    const bool bTrailingNull = c == 0 && i == binToStr.buf_.size() - 1;
-    if (!bTrailingNull) {
-      if (c < ' ' || c >= 127) {
+    if (c != 0 || i != binToStr.buf_.size() - 1) {
+      if (!std::isprint(static_cast<unsigned char>(c))) {
         c = '.';
       }
       stream.put(static_cast<char>(c));
@@ -62,16 +60,14 @@ std::ostream& operator<<(std::ostream& stream, const binaryToStringHelper<T>& bi
 
 template <typename T>
 struct binaryToStringHelper {
-  explicit binaryToStringHelper(const Slice<T> myBuf) noexcept : buf_(myBuf) {
+  constexpr binaryToStringHelper(Slice<T>&& myBuf) noexcept : buf_(std::move(myBuf)) {
   }
-
-  friend std::ostream& operator<<<T>(std::ostream& stream, const binaryToStringHelper<T>& binToStr);
 
   // the Slice is stored by value to avoid dangling references, in case we
   // invoke:
   // binaryToString(makeSlice(buf, 0, n));
   // <- buf_ would be now dangling, were it a reference
-  const Slice<T> buf_;
+  Slice<T> buf_;
 };
 
 /*!
@@ -95,12 +91,12 @@ struct binaryToStringHelper {
  *     the stream throws neither.
  */
 template <typename T>
-inline binaryToStringHelper<T> binaryToString(const Slice<T> sl) noexcept {
-  return binaryToStringHelper<T>(sl);
+constexpr binaryToStringHelper<T> binaryToString(Slice<T>&& sl) noexcept {
+  return binaryToStringHelper<T>(std::move(sl));
 }
 
 /// @brief indent output for kpsRecursive in \em printStructure() \em .
-std::string indent(int32_t depth);
+std::string indent(size_t i);
 
 }  // namespace Exiv2::Internal
 

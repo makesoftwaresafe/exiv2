@@ -46,7 +46,7 @@ class EXIV2API XmpSidecar : public Image {
     @brief Not supported. XMP sidecar files do not contain a comment.
         Calling this function will throw an instance of Error(ErrorCode::kerInvalidSettingForImage).
    */
-  void setComment(std::string_view comment) override;
+  void setComment(const std::string&) override;
   //@}
 
   //! @name Accessors
@@ -54,17 +54,7 @@ class EXIV2API XmpSidecar : public Image {
   [[nodiscard]] std::string mimeType() const override;
   //@}
 
-  //! @name NOT Implemented
-  //@{
-  ~XmpSidecar() override = default;
-  //! Copy constructor
-  XmpSidecar(const XmpSidecar&) = delete;
-  //! Assignment operator
-  XmpSidecar& operator=(const XmpSidecar&) = delete;
-  //@}
-
   Exiv2::Dictionary dates_;
-
 };  // class XmpSidecar
 
 // *****************************************************************************

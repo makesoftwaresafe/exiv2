@@ -41,7 +41,7 @@ class EXIV2API Rw2Image : public Image {
 
   //! @name Manipulators
   //@{
-  void printStructure(std::ostream& out, PrintStructureOption option, int depth) override;
+  void printStructure(std::ostream& out, PrintStructureOption option, size_t depth) override;
   void readMetadata() override;
   /*!
     @brief Todo: Write metadata back to the image. This method is not
@@ -62,7 +62,7 @@ class EXIV2API Rw2Image : public Image {
     @brief Not supported. RW2 format does not contain a comment.
         Calling this function will throw an Error(ErrorCode::kerInvalidSettingForImage).
    */
-  void setComment(std::string_view comment) override;
+  void setComment(const std::string&) override;
   //@}
 
   //! @name Accessors
@@ -71,16 +71,6 @@ class EXIV2API Rw2Image : public Image {
   [[nodiscard]] uint32_t pixelWidth() const override;
   [[nodiscard]] uint32_t pixelHeight() const override;
   //@}
-
-  ~Rw2Image() override = default;
-  //! @name NOT implemented
-  //@{
-  //! Copy constructor
-  Rw2Image(const Rw2Image&) = delete;
-  //! Assignment operator
-  Rw2Image& operator=(const Rw2Image&) = delete;
-  //@}
-
 };  // class Rw2Image
 
 /*!

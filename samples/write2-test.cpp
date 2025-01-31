@@ -11,9 +11,6 @@ void print(const std::string& file);
 int main(int argc, char* const argv[]) {
   Exiv2::XmpParser::initialize();
   ::atexit(Exiv2::XmpParser::terminate);
-#ifdef EXV_ENABLE_BMFF
-  Exiv2::enableBMFF();
-#endif
 
   try {
     if (argc != 2) {
@@ -134,7 +131,7 @@ int main(int argc, char* const argv[]) {
     Exiv2::ExifData edMn9;
     edMn9["Exif.Image.Make"] = "SONY";
     edMn9["Exif.Image.Model"] = "DSC-W7";
-    edMn9["Exif.Sony1.0x2000"] = "0 1 2 3 4 5";
+    edMn9["Exif.Sony1.Quality"] = static_cast<uint32_t>(2);
     write(file, edMn9);
     print(file);
 
@@ -204,13 +201,11 @@ void print(const std::string& file) {
   auto image = Exiv2::ImageFactory::open(file);
   image->readMetadata();
 
-  Exiv2::ExifData& ed = image->exifData();
-  auto end = ed.end();
-  for (auto i = ed.begin(); i != end; ++i) {
-    std::cout << std::setw(45) << std::setfill(' ') << std::left << i->key() << " "
-              << "0x" << std::setw(4) << std::setfill('0') << std::right << std::hex << i->tag() << " " << std::setw(12)
-              << std::setfill(' ') << std::left << i->ifdName() << " " << std::setw(9) << std::setfill(' ') << std::left
-              << i->typeName() << " " << std::dec << std::setw(3) << std::setfill(' ') << std::right << i->count()
-              << " " << std::dec << i->value() << "\n";
+  for (const auto& i : image->exifData()) {
+    std::cout << std::setw(45) << std::setfill(' ') << std::left << i.key() << " "
+              << "0x" << std::setw(4) << std::setfill('0') << std::right << std::hex << i.tag() << " " << std::setw(12)
+              << std::setfill(' ') << std::left << i.ifdName() << " " << std::setw(9) << std::setfill(' ') << std::left
+              << i.typeName() << " " << std::dec << std::setw(3) << std::setfill(' ') << std::right << i.count() << " "
+              << std::dec << i.value() << "\n";
   }
 }

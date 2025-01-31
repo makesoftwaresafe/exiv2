@@ -26,15 +26,6 @@ namespace Exiv2 {
  */
 class EXIV2API BmpImage : public Image {
  public:
-  ~BmpImage() override = default;
-  //! @name NOT Implemented
-  //@{
-  //! Copy constructor
-  BmpImage(const BmpImage&) = delete;
-  //! Assignment operator
-  BmpImage& operator=(const BmpImage&) = delete;
-  //@}
-
   //! @name Creators
   //@{
   /*!
@@ -66,7 +57,7 @@ class EXIV2API BmpImage : public Image {
   void setIptcData(const IptcData& iptcData) override;
 
   /// @throws Error(ErrorCode::kerInvalidSettingForImage)
-  void setComment(std::string_view comment) override;
+  void setComment(const std::string&) override;
   //@}
 
   //! @name Accessors

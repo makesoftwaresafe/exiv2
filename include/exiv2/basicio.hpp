@@ -13,12 +13,6 @@
 // + standard includes
 #include <memory>
 
-// The way to handle data from stdin or data uri path. If EXV_XPATH_MEMIO = 1,
-// it uses MemIo. Otherwises, it uses FileIo.
-#ifndef EXV_XPATH_MEMIO
-#define EXV_XPATH_MEMIO 0
-#endif
-
 // *****************************************************************************
 // namespace extensions
 namespace Exiv2 {
@@ -132,7 +126,7 @@ class EXIV2API BasicIo {
         read if \em rcount bytes are not available.
     @param err Error code to use if an exception is thrown.
    */
-  void readOrThrow(byte* buf, size_t rcount, ErrorCode err);
+  void readOrThrow(byte* buf, size_t rcount, ErrorCode err = ErrorCode::kerCorruptedMetadata);
   /*!
     @brief Read one byte from the IO source. Current IO position is
         advanced by one byte.
@@ -198,10 +192,9 @@ class EXIV2API BasicIo {
   //@{
   /*!
     @brief Get the current IO position.
-    @return Offset from the start of IO if successful;<BR>
-           -1 if failure;
+    @return Offset from the start of IO
    */
-  [[nodiscard]] virtual long tell() const = 0;
+  [[nodiscard]] virtual size_t tell() const = 0;
   /*!
     @brief Get the current size of the IO source in bytes.
     @return Size of the IO source in bytes;<BR>
@@ -277,6 +270,7 @@ class EXIV2API IoCloser {
   IoCloser& operator=(const IoCloser&) = delete;
 };  // class IoCloser
 
+#ifdef EXV_ENABLE_FILESYSTEM
 /*!
   @brief Provides binary file IO by implementing the BasicIo
       interface.
@@ -292,6 +286,9 @@ class EXIV2API FileIo : public BasicIo {
     @param path The full path of a file
    */
   explicit FileIo(const std::string& path);
+#ifdef _WIN32
+  explicit FileIo(const std::wstring& path);
+#endif
 
   //! Destructor. Flushes and closes an open file.
   ~FileIo() override;
@@ -433,16 +430,18 @@ class EXIV2API FileIo : public BasicIo {
     @brief close the file source and set a new path.
    */
   virtual void setPath(const std::string& path);
+#ifdef _WIN32
+  virtual void setPath(const std::wstring& path);
+#endif
 
   //@}
   //! @name Accessors
   //@{
   /*!
     @brief Get the current file position.
-    @return Offset from the start of the file if successful;<BR>
-           -1 if failure;
+    @return Offset from the start of the file
    */
-  [[nodiscard]] long tell() const override;
+  [[nodiscard]] size_t tell() const override;
   /*!
     @brief Flush any buffered writes and get the current file size
         in bytes.
@@ -481,6 +480,7 @@ class EXIV2API FileIo : public BasicIo {
   std::unique_ptr<Impl> p_;
 
 };  // class FileIo
+#endif
 
 /*!
   @brief Provides binary IO on blocks of memory by implementing the BasicIo
@@ -624,7 +624,7 @@ class EXIV2API MemIo : public BasicIo {
     @brief Get the current IO position.
     @return Offset from the start of the memory block
    */
-  [[nodiscard]] long tell() const override;
+  [[nodiscard]] size_t tell() const override;
   /*!
     @brief Get the current memory buffer size in bytes.
     @return Size of the in memory data in bytes;<BR>
@@ -667,40 +667,19 @@ class EXIV2API MemIo : public BasicIo {
 /*!
   @brief Provides binary IO for the data from stdin and data uri path.
  */
-#if EXV_XPATH_MEMIO
-class EXIV2API XPathIo : public MemIo {
- public:
-  //! @name Creators
-  //@{
-  //! Default constructor
-  XPathIo(const std::string& path);
-  //@}
- private:
-  /*!
-      @brief Read data from stdin and write the data to memory.
-      @throw Error if it can't convert stdin to binary.
-   */
-  void ReadStdin();
-  /*!
-      @brief Read the data from data uri path and write the data to memory.
-      @param path The data uri.
-      @throw Error if no base64 data in path.
-   */
-  void ReadDataUri(const std::string& path);
-};  // class XPathIo
-#else
+#if defined(EXV_ENABLE_FILESYSTEM)
 class EXIV2API XPathIo : public FileIo {
  public:
   /*!
       @brief The extension of the temporary file which is created when getting input data
               to read metadata. This file will be deleted in destructor.
   */
-  static constexpr std::string_view TEMP_FILE_EXT = ".exiv2_temp";
+  static constexpr auto TEMP_FILE_EXT = ".exiv2_temp";
   /*!
       @brief The extension of the generated file which is created when getting input data
               to add or modify the metadata.
   */
-  static constexpr std::string_view GEN_FILE_EXT = ".exiv2";
+  static constexpr auto GEN_FILE_EXT = ".exiv2";
 
   //! @name Creators
   //@{
@@ -737,7 +716,7 @@ class EXIV2API XPathIo : public FileIo {
 
  private:
   // True if the file is a temporary file and it should be deleted in destructor.
-  bool isTemp_;
+  bool isTemp_{true};
   std::string tempFilePath_;
 };  // class XPathIo
 #endif
@@ -874,7 +853,7 @@ class EXIV2API RemoteIo : public BasicIo {
     @brief Get the current IO position.
     @return Offset from the start of the memory block
    */
-  [[nodiscard]] long tell() const override;
+  [[nodiscard]] size_t tell() const override;
   /*!
     @brief Get the current memory buffer size in bytes.
     @return Size of the in memory data in bytes;<BR>
@@ -926,13 +905,6 @@ class EXIV2API HttpIo : public RemoteIo {
    */
   explicit HttpIo(const std::string& url, size_t blockSize = 1024);
 
-  ~HttpIo() override = default;
-  // NOT IMPLEMENTED
-  //! Copy constructor
-  HttpIo(const HttpIo&) = delete;
-  //! Assignment operator
-  HttpIo& operator=(const HttpIo&) = delete;
-
  private:
   // Pimpl idiom
   class HttpImpl;
@@ -970,13 +942,6 @@ class EXIV2API CurlIo : public RemoteIo {
           for the protocol. Otherwise, it throws the Error.
    */
   size_t write(BasicIo& src) override;
-
-  ~CurlIo() override = default;
-  // NOT IMPLEMENTED
-  //! Copy constructor
-  CurlIo(const CurlIo&) = delete;
-  //! Assignment operator
-  CurlIo& operator=(const CurlIo&) = delete;
 
  protected:
   // Pimpl idiom

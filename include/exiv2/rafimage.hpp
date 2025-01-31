@@ -43,7 +43,7 @@ class EXIV2API RafImage : public Image {
 
   //! @name Manipulators
   //@{
-  void printStructure(std::ostream& out, PrintStructureOption option, int depth) override;
+  void printStructure(std::ostream& out, PrintStructureOption option, size_t depth) override;
   void readMetadata() override;
   /*!
     @brief Todo: Write metadata back to the image. This method is not
@@ -64,7 +64,7 @@ class EXIV2API RafImage : public Image {
     @brief Not supported. RAF format does not contain a comment.
         Calling this function will throw an Error(ErrorCode::kerInvalidSettingForImage).
    */
-  void setComment(std::string_view comment) override;
+  void setComment(const std::string&) override;
   //@}
 
   //! @name Accessors
@@ -73,16 +73,6 @@ class EXIV2API RafImage : public Image {
   [[nodiscard]] uint32_t pixelWidth() const override;
   [[nodiscard]] uint32_t pixelHeight() const override;
   //@}
-
-  ~RafImage() override = default;
-  //! @name NOT implemented
-  //@{
-  //! Copy constructor
-  RafImage(const RafImage&) = delete;
-  //! Assignment operator
-  RafImage& operator=(const RafImage&) = delete;
-  //@}
-
 };  // class RafImage
 
 // *****************************************************************************

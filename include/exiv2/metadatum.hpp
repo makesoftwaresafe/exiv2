@@ -30,11 +30,11 @@ class EXIV2API Key {
 
   //! @name Creators
   //@{
-  Key() = default;
   //! Destructor
   virtual ~Key() = default;
   //@}
-  Key(const Key&) = default;
+  Key(Key&&) = delete;
+  Key& operator=(Key&&) = delete;
   //! @name Accessors
   //@{
   /*!
@@ -52,6 +52,8 @@ class EXIV2API Key {
   [[nodiscard]] virtual std::string tagName() const = 0;
   //! Return a label for the tag
   [[nodiscard]] virtual std::string tagLabel() const = 0;
+  //! Return a description for the tag
+  [[nodiscard]] virtual std::string tagDesc() const = 0;
   //! Return the tag number
   [[nodiscard]] virtual uint16_t tag() const = 0;
   /*!
@@ -72,6 +74,8 @@ class EXIV2API Key {
   //@}
 
  protected:
+  Key() = default;
+  Key(const Key&) = default;
   //! @name Manipulators
   //@{
   /*!
@@ -100,10 +104,6 @@ class EXIV2API Metadatum {
  public:
   //! @name Creators
   //@{
-  //! Default Constructor
-  Metadatum() = default;
-  //! Copy constructor
-  Metadatum(const Metadatum&) = default;
   //! Destructor
   virtual ~Metadatum() = default;
   //@}
@@ -181,6 +181,8 @@ class EXIV2API Metadatum {
   [[nodiscard]] virtual std::string tagName() const = 0;
   //! Return a label for the tag
   [[nodiscard]] virtual std::string tagLabel() const = 0;
+  //! Return a description for the tag
+  [[nodiscard]] virtual std::string tagDesc() const = 0;
   //! Return the tag
   [[nodiscard]] virtual uint16_t tag() const = 0;
   //! Return the type id of the value
@@ -254,6 +256,8 @@ class EXIV2API Metadatum {
   //@}
 
  protected:
+  Metadatum() = default;
+  Metadatum(const Metadatum&) = default;
   //! @name Manipulators
   //@{
   /*!

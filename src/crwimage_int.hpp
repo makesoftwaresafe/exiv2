@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-#ifndef CRWIMAGE_INT_HPP_
-#define CRWIMAGE_INT_HPP_
+#ifndef EXIV2_CRWIMAGE_INT_HPP
+#define EXIV2_CRWIMAGE_INT_HPP
 
 // *****************************************************************************
 // included header files
@@ -20,22 +20,25 @@ namespace Exiv2::Internal {
 class CiffHeader;
 class CiffComponent;
 struct CrwMapping;
-using CrwSubDir = std::pair<uint16_t, uint16_t>;
+struct CrwSubDir {
+  uint16_t dir;
+  uint16_t parent;
+};
 
 // *****************************************************************************
 // type definitions
 
 //! Function pointer for functions to decode Exif tags from a CRW entry
-using CrwDecodeFct = std::function<void(const CiffComponent&, const CrwMapping*, Image&, ByteOrder)>;
+using CrwDecodeFct = void (*)(const CiffComponent&, const CrwMapping*, Image&, ByteOrder);
 
 //! Function pointer for functions to encode CRW entries from Exif tags
-using CrwEncodeFct = std::function<void(const Image&, const CrwMapping*, CiffHeader*)>;
+using CrwEncodeFct = void (*)(const Image&, const CrwMapping&, CiffHeader&);
 
 //! Stack to hold a path of CRW directories
 using CrwDirs = std::stack<CrwSubDir>;
 
 //! Type to identify where the data is stored in a directory
-enum DataLocId { valueData, directoryData, lastDataLocId };
+enum class DataLocId { valueData, directoryData, lastDataLocId };
 
 // *****************************************************************************
 // class definitions
@@ -58,8 +61,9 @@ class CiffComponent {
   //! Default constructor
   CiffComponent() = default;
   //! Constructor taking a tag and directory
-  CiffComponent(uint16_t tag, uint16_t dir) : dir_(dir), tag_(tag) {
-  }
+  CiffComponent(uint16_t tag, uint16_t dir);
+  CiffComponent(const CiffComponent&) = delete;
+  CiffComponent& operator=(const CiffComponent&) = delete;
   //! Virtual destructor.
   virtual ~CiffComponent() = default;
   //@}
@@ -282,19 +286,7 @@ class CiffComponent {
          a CRW (Canon Raw data) image.
  */
 class CiffEntry : public CiffComponent {
- public:
-  //! @name Creators
-  //@{
-  //! Default constructor
-  CiffEntry() = default;
-  //! Constructor taking a tag and directory
-  CiffEntry(uint16_t tag, uint16_t dir) : CiffComponent(tag, dir) {
-  }
-  //@}
-
-  // Default assignment operator is fine
-
- private:
+  using CiffComponent::CiffComponent;
   //! @name Manipulators
   //@{
   using CiffComponent::doAdd;
@@ -317,15 +309,11 @@ class CiffEntry : public CiffComponent {
 
 //! This class models a CIFF directory of a CRW (Canon Raw data) image.
 class CiffDirectory : public CiffComponent {
+  using CiffComponent::CiffComponent;
+
  public:
   //! @name Creators
   //@{
-  //! Default constructor
-  CiffDirectory() = default;
-  //! Constructor taking a tag and directory
-  CiffDirectory(uint16_t tag, uint16_t dir) : CiffComponent(tag, dir) {
-  }
-
   //! Virtual destructor
   ~CiffDirectory() override;
   //@}
@@ -383,7 +371,6 @@ class CiffDirectory : public CiffComponent {
   // DATA
   Components components_;  //!< List of components in this dir
   UniquePtr m_;            // used by recursive doAdd
-  CiffComponent* cc_ = nullptr;
 
 };  // class CiffDirectory
 
@@ -397,14 +384,6 @@ class CiffHeader {
  public:
   //! CiffHeader auto_ptr type
   using UniquePtr = std::unique_ptr<CiffHeader>;
-
-  //! @name Creators
-  //@{
-  //! Default constructor
-  CiffHeader() = default;
-  //! Virtual destructor
-  virtual ~CiffHeader() = default;
-  //@}
 
   //! @name Manipulators
   //@{
@@ -436,7 +415,7 @@ class CiffHeader {
     @param crwTagId Tag id to be removed.
     @param crwDir   Parent directory of the tag.
    */
-  void remove(uint16_t crwTagId, uint16_t crwDir);
+  void remove(uint16_t crwTagId, uint16_t crwDir) const;
   //@}
 
   //! Return a pointer to the Canon CRW signature.
@@ -478,7 +457,7 @@ class CiffHeader {
 
  private:
   // DATA
-  static const char signature_[];  //!< Canon CRW signature "HEAPCCDR"
+  static constexpr auto signature_ = "HEAPCCDR";  //!< Canon CRW signature
 
   std::unique_ptr<CiffDirectory> pRootDir_;  //!< Pointer to the root directory
   ByteOrder byteOrder_ = littleEndian;       //!< Applicable byte order
@@ -493,22 +472,6 @@ class CiffHeader {
          image metadata and vice versa.
  */
 struct CrwMapping {
-  //! @name Creators
-  //@{
-  //! Default constructor
-  CrwMapping(uint16_t crwTagId, uint16_t crwDir, uint32_t size, uint16_t tag, Internal::IfdId ifdId,
-             CrwDecodeFct toExif, CrwEncodeFct fromExif) :
-      crwTagId_(crwTagId),
-      crwDir_(crwDir),
-      size_(size),
-      tag_(tag),
-      ifdId_(ifdId),
-      toExif_(std::move(toExif)),
-      fromExif_(std::move(fromExif)) {
-  }
-  //@}
-
-  // DATA
   uint16_t crwTagId_;      //!< CRW tag id
   uint16_t crwDir_;        //!< CRW directory tag
   uint32_t size_;          //!< Data size (overwrites the size from the entry)
@@ -516,8 +479,7 @@ struct CrwMapping {
   IfdId ifdId_;            //!< Exif Ifd id to map to
   CrwDecodeFct toExif_;    //!< Conversion function
   CrwEncodeFct fromExif_;  //!< Reverse conversion function
-
-};  // struct CrwMapping
+};
 
 /*!
   @brief Static class providing mapping functionality from CRW entries
@@ -525,13 +487,6 @@ struct CrwMapping {
  */
 class CrwMap {
  public:
-  ~CrwMap() = delete;
-  //! @name Not implemented
-  //@{
-  CrwMap(const CrwMap&) = delete;
-  CrwMap& operator=(const CrwMap&) = delete;
-  //@}
-
   /*!
     @brief Decode image metadata from a CRW entry, convert and add it
            to the image metadata. This function converts only one CRW
@@ -552,7 +507,7 @@ class CrwMap {
     @param pHead         Destination parse tree.
     @param image         Source image containing the metadata.
    */
-  static void encode(CiffHeader* pHead, const Image& image);
+  static void encode(CiffHeader& pHead, const Image& image);
 
   /*!
     @brief Load the stack: loop through the CRW subdirs hierarchy and push
@@ -616,25 +571,25 @@ class CrwMap {
     @param pHead Pointer to the head of the CIFF parse tree into which
                  the metadata from \em image is encoded.
    */
-  static void encodeBasic(const Image& image, const CrwMapping* pCrwMapping, CiffHeader* pHead);
+  static void encodeBasic(const Image& image, const CrwMapping& pCrwMapping, CiffHeader& pHead);
 
   //! Encode the user comment
-  static void encode0x0805(const Image& image, const CrwMapping* pCrwMapping, CiffHeader* pHead);
+  static void encode0x0805(const Image& image, const CrwMapping& pCrwMapping, CiffHeader& pHead);
 
   //! Encode camera Make and Model information
-  static void encode0x080a(const Image& image, const CrwMapping* pCrwMapping, CiffHeader* pHead);
+  static void encode0x080a(const Image& image, const CrwMapping& pCrwMapping, CiffHeader& pHead);
 
   //! Encode Canon Camera Settings 1, 2 and Custom Function arrays
-  static void encodeArray(const Image& image, const CrwMapping* pCrwMapping, CiffHeader* pHead);
+  static void encodeArray(const Image& image, const CrwMapping& pCrwMapping, CiffHeader& pHead);
 
   //! Encode the date when the picture was taken
-  static void encode0x180e(const Image& image, const CrwMapping* pCrwMapping, CiffHeader* pHead);
+  static void encode0x180e(const Image& image, const CrwMapping& pCrwMapping, CiffHeader& pHead);
 
   //! Encode image width and height
-  static void encode0x1810(const Image& image, const CrwMapping* pCrwMapping, CiffHeader* pHead);
+  static void encode0x1810(const Image& image, const CrwMapping& pCrwMapping, CiffHeader& pHead);
 
   //! Encode the thumbnail image
-  static void encode0x2008(const Image& image, const CrwMapping* pCrwMapping, CiffHeader* pHead);
+  static void encode0x2008(const Image& image, const CrwMapping& pCrwMapping, CiffHeader& pHead);
 
   // DATA
   static const CrwMapping crwMapping_[];  //!< Metadata conversion table
@@ -654,4 +609,4 @@ DataBuf packIfdId(const ExifData& exifData, IfdId ifdId, ByteOrder byteOrder);
 
 }  // namespace Exiv2::Internal
 
-#endif  // #ifndef CRWIMAGE_INT_HPP_
+#endif  // EXIV2_CRWIMAGE_INT_HPP

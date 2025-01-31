@@ -1,29 +1,21 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // Sample program to read gpx files and update images with GPS tags
 
-#include <expat.h>
 #include <exiv2/exiv2.hpp>
 
+#include <expat.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 
 #include <algorithm>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 
-#if defined(__MINGW32__) || defined(__MINGW64__)
-#ifndef __MINGW__
-#define __MINGW__
-#endif
-#endif
+namespace fs = std::filesystem;
 
-using namespace std;
-
-#if defined(_MSC_VER) || defined(__MINGW__)
+#ifdef _WIN32
 #include <windows.h>
-char* realpath(const char* file, char* path);
-#define lstat _stat
-#define stat _stat
 #if _MSC_VER < 1400
 #define strcpy_s(d, l, s) strcpy(d, s)
 #define strcat_s(d, l, s) strcat(d, s)
@@ -46,7 +38,7 @@ class Options;
 int getFileType(const char* path, Options& options);
 int getFileType(std::string& path, Options& options);
 
-string getExifTime(time_t t);
+std::string getExifTime(time_t t);
 time_t parseTime(const char*, bool bAdjust = false);
 int timeZoneAdjust();
 
@@ -64,10 +56,14 @@ class Options {
   virtual ~Options() = default;
 };
 
-enum { resultOK = 0, resultSyntaxError, resultSelectFailed };
+enum {
+  resultOK = 0,
+  resultSyntaxError,
+  resultSelectFailed,
+};
 
-enum  // keyword indices
-{
+// keyword indices
+enum {
   kwHELP = 0,
   kwVERSION,
   kwDST,
@@ -77,13 +73,10 @@ enum  // keyword indices
   kwADJUST,
   kwTZ,
   kwDELTA,
-  kwMAX  // manages keyword array
-  ,
-  kwNEEDVALUE  // bogus keywords for error reporting
-  ,
-  kwSYNTAX  // -- ditto --
-  ,
-  kwNOVALUE = -kwVERBOSE  // keywords <= kwNOVALUE are flags (no value needed)
+  kwMAX,                   // manages keyword array
+  kwNEEDVALUE,             // bogus keywords for error reporting
+  kwSYNTAX,                // -- ditto --
+  kwNOVALUE = -kwVERBOSE,  // keywords <= kwNOVALUE are flags (no value needed)
 };
 
 // file types supported
@@ -384,7 +377,7 @@ int timeZoneAdjust() {
   [[maybe_unused]] time_t now = time(nullptr);
   int offset;
 
-#if defined(_MSC_VER) || defined(__MINGW__)
+#if defined(_WIN32)
   TIME_ZONE_INFORMATION TimeZoneInfo;
   GetTimeZoneInformation(&TimeZoneInfo);
   offset = -(((int)TimeZoneInfo.Bias + (int)TimeZoneInfo.DaylightBias) * 60);
@@ -411,7 +404,7 @@ int timeZoneAdjust() {
   return offset;
 }
 
-string getExifTime(const time_t t) {
+std::string getExifTime(const time_t t) {
   static char result[100];
   strftime(result, sizeof(result), "%Y-%m-%d %H:%M:%S", localtime(&t));
   return result;
@@ -419,13 +412,6 @@ string getExifTime(const time_t t) {
 
 std::string makePath(const std::string& dir, const std::string& file) {
   return dir + std::string(EXV_SEPARATOR_STR) + file;
-}
-
-const char* makePath(const char* dir, const char* file) {
-  static char result[_MAX_PATH];
-  std::string r = makePath(std::string(dir), std::string(file));
-  strcpy(result, r.c_str());
-  return result;
 }
 
 // file utilities
@@ -453,7 +439,7 @@ bool readDir(const char* path, Options& options) {
         if (ffd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
           // _tprintf(TEXT("  %s   <DIR>\n"), ffd.cFileName);
         } else {
-          std::string pathName = makePath(path, std::string(ffd.cFileName));
+          std::string pathName = makePath(path, ffd.cFileName);
           if (getFileType(pathName, options) == typeImage) {
             gFiles.push_back(pathName);
           }
@@ -472,8 +458,6 @@ bool readDir(const char* path, Options& options) {
     // print all the files and directories within directory
     while ((ent = readdir(dir)) != nullptr) {
       std::string pathName = makePath(path, ent->d_name);
-      struct stat buf;
-      lstat(path, &buf);
       if (ent->d_name[0] != '.') {
         // printf("reading %s => %s\n",ent->d_name,pathName.c_str());
         if (getFileType(pathName, options) == typeImage) {
@@ -487,48 +471,55 @@ bool readDir(const char* path, Options& options) {
   return bResult;
 }
 
-inline size_t sip(FILE* f, char* buffer, size_t max_len, size_t len) {
-  while (!feof(f) && len < max_len && buffer[len - 1] != '>')
-    buffer[len++] = fgetc(f);
+inline size_t sip(std::ifstream& f, char* buffer, size_t max_len, size_t len) {
+  while (f && len < max_len && buffer[len - 1] != '>') {
+    char c;
+    f.get(c);
+    buffer[len++] = c;
+  }
   return len;
 }
 
 bool readXML(const char* path, Options& options) {
-  FILE* f = fopen(path, "r");
-  XML_Parser parser = XML_ParserCreate(nullptr);
-  bool bResult = f && parser;
-  if (bResult) {
-    char buffer[8 * 1024];
-    UserData me(options);
-
-    XML_SetUserData(parser, &me);
-    XML_SetElementHandler(parser, startElement, endElement);
-    XML_SetCharacterDataHandler(parser, charHandler);
-
-    // a little sip at the data
-    size_t len = fread(buffer, 1, sizeof(buffer) - 100, f);
-    const char* lead = "<?xml";
-    bResult = strncmp(lead, buffer, strlen(lead)) == 0;
-
-    // swallow it
-    if (bResult) {
-      len = sip(f, buffer, sizeof buffer, len);
-      bResult = XML_Parse(parser, buffer, static_cast<int>(len), len == 0) == XML_STATUS_OK;
-    }
-
-    // drink the rest of the file
-    while (bResult && len != 0) {
-      len = fread(buffer, 1, sizeof(buffer) - 100, f);
-      len = sip(f, buffer, sizeof buffer, len);
-      bResult = XML_Parse(parser, buffer, static_cast<int>(len), len == 0) == XML_STATUS_OK;
-    };
+  std::ifstream file(path);
+  if (!file) {
+    return false;
   }
 
-  if (f)
-    fclose(f);
-  if (parser)
-    XML_ParserFree(parser);
+  XML_Parser parser = XML_ParserCreate(nullptr);
+  if (!parser) {
+    return false;
+  }
 
+  bool bResult = true;
+  std::vector<char> buffer(8 * 1024);
+  UserData me(options);
+
+  XML_SetUserData(parser, &me);
+  XML_SetElementHandler(parser, startElement, endElement);
+  XML_SetCharacterDataHandler(parser, charHandler);
+
+  // A little sip at the data
+  file.read(buffer.data(), buffer.size() - 100);
+  std::streamsize len = file.gcount();
+  const char* lead = "<?xml";
+  bResult = len > 0 && strncmp(lead, buffer.data(), strlen(lead)) == 0;
+
+  // Swallow it
+  if (bResult) {
+    len = sip(file, buffer.data(), buffer.size(), len);
+    bResult = XML_Parse(parser, buffer.data(), static_cast<int>(len), len == 0) == XML_STATUS_OK;
+  }
+
+  // Drink the rest of the file
+  while (bResult && len > 0) {
+    file.read(buffer.data(), buffer.size() - 100);
+    len = file.gcount();
+    len = sip(file, buffer.data(), buffer.size(), len);
+    bResult = XML_Parse(parser, buffer.data(), static_cast<int>(len), len == 0) == XML_STATUS_OK;
+  }
+
+  XML_ParserFree(parser);
   return bResult;
 }
 
@@ -559,8 +550,7 @@ time_t readImageTime(const std::string& path, std::string* pS = nullptr) {
   for (size_t i = 0; !result && dateStrings[i]; i++) {
     const char* dateString = dateStrings[i];
     try {
-      Image::UniquePtr image = ImageFactory::open(path);
-      if (image.get()) {
+      if (auto image = ImageFactory::open(path)) {
         image->readMetadata();
         ExifData& exifData = image->exifData();
         //  printf("%s => %s\n",dateString, exifData[dateString].toString().c_str());
@@ -591,22 +581,21 @@ bool sina(const char* s, const char** a) {
 }
 
 int readFile(const char* path, const Options& /* options */) {
-  FILE* f = fopen(path, "r");
-  int nResult = f ? typeFile : typeUnknown;
-  if (f) {
-    const char* ext = strstr(path, ".");
-    if (ext) {
-      const char* docs[] = {".doc", ".txt", nullptr};
-      const char* code[] = {".cpp", ".h", ".pl", ".py", ".pyc", nullptr};
-      if (sina(ext, docs))
-        nResult = typeDoc;
-      if (sina(ext, code))
-        nResult = typeCode;
-    }
-    fclose(f);
+  if (!fs::exists(path)) {
+    return typeUnknown;
   }
 
-  return nResult;
+  const char* ext = strstr(path, ".");
+  if (ext) {
+    const char* docs[] = {".doc", ".txt", nullptr};
+    const char* code[] = {".cpp", ".h", ".pl", ".py", ".pyc", nullptr};
+    if (sina(ext, docs))
+      return typeDoc;
+    if (sina(ext, code))
+      return typeCode;
+  }
+
+  return typeFile;
 }
 
 Position* searchTimeDict(TimeDict_t& td, const time_t& time, long long delta) {
@@ -614,7 +603,7 @@ Position* searchTimeDict(TimeDict_t& td, const time_t& time, long long delta) {
   for (int t = 0; !result && t < delta; t++) {
     for (int x = 0; !result && x < 2; x++) {
       int T = t * ((x == 0) ? -1 : 1);
-      if (td.count(time + T)) {
+      if (td.contains(time + T)) {
         result = &td[time + T];
         result->delta(T);
       }
@@ -627,10 +616,13 @@ int getFileType(std::string& path, Options& options) {
   return getFileType(path.c_str(), options);
 }
 int getFileType(const char* path, Options& options) {
-  return readXML(path, options)     ? typeXML
-         : readDir(path, options)   ? typeDirectory
-         : readImage(path, options) ? typeImage
-                                    : readFile(path, options);
+  if (readXML(path, options))
+    return typeXML;
+  if (readDir(path, options))
+    return typeDirectory;
+  if (readImage(path, options))
+    return typeImage;
+  return readFile(path, options);
 }
 
 int version(const char* program) {
@@ -699,9 +691,6 @@ bool mySort(const std::string& a, const std::string& b) {
 int main(int argc, const char* argv[]) {
   Exiv2::XmpParser::initialize();
   ::atexit(Exiv2::XmpParser::terminate);
-#ifdef EXV_ENABLE_BMFF
-  Exiv2::enableBMFF();
-#endif
 
   int result = 0;
   const char* program = argv[0];
@@ -726,7 +715,7 @@ int main(int argc, const char* argv[]) {
   keywords[kwTZ] = "tz";
   keywords[kwDELTA] = "delta";
 
-  map<std::string, string> shorts;
+  std::map<std::string, std::string> shorts;
   shorts["-?"] = "-help";
   shorts["-h"] = "-help";
   shorts["-v"] = "-verbose";
@@ -749,7 +738,7 @@ int main(int argc, const char* argv[]) {
 
   for (int i = 1; !result && i < argc; i++) {
     const char* arg = argv[i++];
-    if (shorts.count(arg))
+    if (shorts.contains(arg))
       arg = shorts[arg].c_str();
 
     const char* value = argv[i];
@@ -801,7 +790,7 @@ int main(int argc, const char* argv[]) {
           printf("%s %s ", arg, types[type]);
         if (type == typeImage) {
           time_t t = readImageTime(std::string(arg));
-          auto p = std::filesystem::absolute(std::filesystem::path(arg));
+          auto p = fs::absolute(fs::path(arg));
           std::string path = p.string();
           if (t && !path.empty()) {
             if (options.verbose)

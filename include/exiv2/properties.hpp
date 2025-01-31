@@ -8,6 +8,7 @@
 
 // included header files
 #include <mutex>
+
 #include "datasets.hpp"
 
 // *****************************************************************************
@@ -40,15 +41,11 @@ struct EXIV2API XmpPropertyInfo {
 struct EXIV2API XmpNsInfo {
   //! For comparison with prefix
   struct Prefix {
-    //! Constructor.
-    explicit Prefix(std::string prefix);
     //! The prefix string.
     std::string prefix_;
   };
   //! For comparison with namespace
   struct Ns {
-    //! Constructor.
-    explicit Ns(std::string ns);
     //! The namespace string
     std::string ns_;
   };
@@ -71,12 +68,6 @@ class EXIV2API XmpProperties {
   static const XmpNsInfo* lookupNsRegistryUnsafe(const XmpNsInfo::Prefix& prefix);
 
  public:
-  ~XmpProperties() = delete;
-  //! Prevent copy-construction: not implemented.
-  XmpProperties(const XmpProperties&) = delete;
-  //! Prevent assignment: not implemented.
-  XmpProperties& operator=(const XmpProperties&) = delete;
-
   /*!
     @brief Return the title (label) of the property.
     @param key The property key
@@ -262,6 +253,7 @@ class EXIV2API XmpKey : public Key {
   [[nodiscard]] std::string groupName() const override;
   [[nodiscard]] std::string tagName() const override;
   [[nodiscard]] std::string tagLabel() const override;
+  [[nodiscard]] std::string tagDesc() const override;
   //! Properties don't have a tag number. Return 0.
   [[nodiscard]] uint16_t tag() const override;
 

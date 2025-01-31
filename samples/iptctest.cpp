@@ -16,9 +16,6 @@ void processModify(const std::string& line, int num, IptcData& iptcData);
 int main(int argc, char* const argv[]) {
   Exiv2::XmpParser::initialize();
   ::atexit(Exiv2::XmpParser::terminate);
-#ifdef EXV_ENABLE_BMFF
-  Exiv2::enableBMFF();
-#endif
 
   try {
     if (argc != 2) {
@@ -34,7 +31,7 @@ int main(int argc, char* const argv[]) {
     std::string line;
     int num = 0;
     std::getline(std::cin, line);
-    while (line.length() && processLine(line, ++num, image->iptcData())) {
+    while (!line.empty() && processLine(line, ++num, image->iptcData())) {
       std::getline(std::cin, line);
     }
 
@@ -49,7 +46,7 @@ int main(int argc, char* const argv[]) {
 }
 
 bool processLine(const std::string& line, int num, IptcData& iptcData) {
-  switch (line.at(0)) {
+  switch (line.front()) {
     case 'a':
     case 'A':
       processAdd(line, num, iptcData);
@@ -67,7 +64,7 @@ bool processLine(const std::string& line, int num, IptcData& iptcData) {
       return false;
     default:
       std::ostringstream os;
-      os << "Unknown command (" << line.at(0) << ") at line " << num;
+      os << "Unknown command (" << line.front() << ") at line " << num;
       throw Error(ErrorCode::kerErrorMessage, os.str());
   }
   return true;
@@ -89,7 +86,7 @@ void processAdd(const std::string& line, int num, IptcData& iptcData) {
 
   std::string data(line.substr(dataStart));
   // if data starts and ends with quotes, remove them
-  if (data.at(0) == '\"' && data.at(data.size() - 1) == '\"') {
+  if (data.front() == '\"' && data.back() == '\"') {
     data = data.substr(1, data.size() - 2);
   }
   TypeId type = IptcDataSets::dataSetType(iptcKey.tag(), iptcKey.record());
@@ -136,7 +133,7 @@ void processModify(const std::string& line, int num, IptcData& iptcData) {
 
   std::string data(line.substr(dataStart));
   // if data starts and ends with quotes, remove them
-  if (data.at(0) == '\"' && data.at(data.size() - 1) == '\"') {
+  if (data.front() == '\"' && data.back() == '\"') {
     data = data.substr(1, data.size() - 2);
   }
   TypeId type = IptcDataSets::dataSetType(iptcKey.tag(), iptcKey.record());

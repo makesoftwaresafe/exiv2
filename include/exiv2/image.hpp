@@ -21,10 +21,10 @@ namespace Exiv2 {
 
 //! Native preview information. This is meant to be used only by the PreviewManager.
 struct NativePreview {
-  size_t position_;       //!< Position
-  size_t size_;           //!< Size
-  size_t width_;          //!< Width
-  size_t height_;         //!< Height
+  size_t position_{};     //!< Position
+  size_t size_{};         //!< Size
+  size_t width_{};        //!< Width
+  size_t height_{};       //!< Height
   std::string filter_;    //!< Filter
   std::string mimeType_;  //!< MIME type
 };
@@ -73,7 +73,7 @@ class EXIV2API Image {
     @warning This function is not thread safe and intended for exiv2 -pS for debugging.
     @warning You may need to put the stream into binary mode (see src/actions.cpp)
    */
-  virtual void printStructure(std::ostream& out, PrintStructureOption option = kpsNone, int depth = 0);
+  virtual void printStructure(std::ostream& out, PrintStructureOption option = kpsNone, size_t depth = 0);
   /*!
     @brief Read all metadata supported by a specific image format from the
         image. Before this method is called, the image metadata will be
@@ -177,7 +177,7 @@ class EXIV2API Image {
   virtual void clearXmpData();
 
   /// @brief Set the image comment. The comment is written to the image when writeMetadata() is called.
-  virtual void setComment(std::string_view comment);
+  virtual void setComment(const std::string& comment);
 
   /*!
     @brief Erase any buffered comment. Comment is not removed
@@ -293,13 +293,13 @@ class EXIV2API Image {
     @throw Error if reading of the file fails or the image data is
           not valid (does not look like data of the specific image type).
    */
-  void printTiffStructure(BasicIo& io, std::ostream& out, PrintStructureOption option, int depth, size_t offset = 0);
+  void printTiffStructure(BasicIo& io, std::ostream& out, PrintStructureOption option, size_t depth, size_t offset = 0);
 
   /*!
     @brief Print out the structure of a TIFF IFD
    */
   void printIFDStructure(BasicIo& io, std::ostream& out, Exiv2::PrintStructureOption option, size_t start, bool bSwap,
-                         char c, int depth);
+                         char c, size_t depth);
 
   /*!
     @brief is the host platform bigEndian
@@ -409,7 +409,7 @@ class EXIV2API Image {
   /*!
     @brief Return a reference to the BasicIo instance being used for Io.
 
-    This refence is particularly useful to reading the results of
+    This reference is particularly useful to reading the results of
     operations on a MemIo instance. For example after metadata has
     been modified and the writeMetadata() method has been called,
     this method can be used to get access to the modified image.
@@ -430,9 +430,9 @@ class EXIV2API Image {
   [[nodiscard]] AccessMode checkMode(MetadataId metadataId) const;
   /*!
     @brief Check if image supports a particular type of metadata.
-       This method is deprecated. Use checkMode() instead.
+    @deprecated This method is deprecated. Use checkMode() instead.
    */
-  [[nodiscard]] bool supportsMetadata(MetadataId metadataId) const;
+  [[deprecated]] [[nodiscard]] bool supportsMetadata(MetadataId metadataId) const;
   //! Return the flag indicating the source when writing XMP metadata.
   [[nodiscard]] bool writeXmpFromPacket() const;
   //! Return list of native previews. This is meant to be used only by the PreviewManager.
@@ -467,8 +467,8 @@ class EXIV2API Image {
   DataBuf iccProfile_;                //!< ICC buffer (binary data)
   std::string comment_;               //!< User comment
   std::string xmpPacket_;             //!< XMP packet
-  uint32_t pixelWidth_;               //!< image pixel width
-  uint32_t pixelHeight_;              //!< image pixel height
+  uint32_t pixelWidth_{0};            //!< image pixel width
+  uint32_t pixelHeight_{0};           //!< image pixel height
   NativePreviewList nativePreviews_;  //!< list of native previews
 
   //! Return tag name for given tag id.
@@ -481,11 +481,15 @@ class EXIV2API Image {
   // DATA
   ImageType imageType_;         //!< Image type
   uint16_t supportedMetadata_;  //!< Bitmap with all supported metadata types
-  bool writeXmpFromPacket_;     //!< Determines the source when writing XMP
-  ByteOrder byteOrder_;         //!< Byte order
+#ifdef EXV_HAVE_XMP_TOOLKIT
+  bool writeXmpFromPacket_{false};  //!< Determines the source when writing XMP
+#else
+  bool writeXmpFromPacket_{true};  //!< Determines the source when writing XMP
+#endif
+  ByteOrder byteOrder_{invalidByteOrder};  //!< Byte order
 
   std::map<int, std::string> tags_;  //!< Map of tags
-  bool init_;                        //!< Flag marking if map of tags needs to be initialized
+  bool init_{true};                  //!< Flag marking if map of tags needs to be initialized
 
 };  // class Image
 
@@ -518,7 +522,9 @@ class EXIV2API ImageFactory {
           read the remote file.
    */
   static BasicIo::UniquePtr createIo(const std::string& path, bool useCurl = true);
-
+#ifdef _WIN32
+  static BasicIo::UniquePtr createIo(const std::wstring& path);
+#endif
   /*!
     @brief Create an Image subclass of the appropriate type by reading
         the specified file. %Image type is derived from the file
@@ -533,7 +539,9 @@ class EXIV2API ImageFactory {
         unknown image type.
    */
   static Image::UniquePtr open(const std::string& path, bool useCurl = true);
-
+#ifdef _WIN32
+  static Image::UniquePtr open(const std::wstring& path);
+#endif
   /*!
     @brief Create an Image subclass of the appropriate type by reading
         the provided memory. %Image type is derived from the memory
@@ -653,15 +661,6 @@ class EXIV2API ImageFactory {
              false if the data does not match
   */
   static bool checkType(ImageType type, BasicIo& io, bool advance);
-
-  //! @name Creators
-  //@{
-  ~ImageFactory() = delete;
-  //! Prevent copy construction: not implemented.
-  ImageFactory(const ImageFactory&) = delete;
-  ImageFactory& operator=(const ImageFactory&) = delete;
-  //@}
-
 };  // class ImageFactory
 
 // *****************************************************************************

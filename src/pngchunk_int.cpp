@@ -29,7 +29,7 @@
 
 /*
 
-URLs to find informations about PNG chunks :
+URLs to find information about PNG chunks :
 
 tEXt and zTXt chunks : http://www.vias.org/pngguide/chapter11_04.html
 iTXt chunk           : http://www.vias.org/pngguide/chapter11_05.html
@@ -38,7 +38,7 @@ PNG tags             : http://www.sno.phy.queensu.ca/~phil/exiftool/TagNames/PNG
 */
 namespace {
 constexpr size_t nullSeparators = 2;
-}
+}  // namespace
 
 // *****************************************************************************
 // class member definitions
@@ -54,7 +54,7 @@ void PngChunk::decodeTXTChunk(Image* pImage, const DataBuf& data, TxtChunkType t
   DataBuf arr = parseTXTChunk(data, key.size(), type);
 
 #ifdef EXIV2_DEBUG_MESSAGES
-  std::cout << "Exiv2::PngChunk::decodeTXTChunk: TXT chunk data: " << std::string(arr.c_str(), arr.size()) << std::endl;
+  std::cout << "Exiv2::PngChunk::decodeTXTChunk: TXT chunk data: " << std::string(arr.c_str(), arr.size()) << '\n';
 #endif
   if (!key.empty())
     parseChunkContent(pImage, key.c_data(), key.size(), arr);
@@ -64,7 +64,7 @@ DataBuf PngChunk::decodeTXTChunk(const DataBuf& data, TxtChunkType type) {
   DataBuf key = keyTXTChunk(data);
 
 #ifdef EXIV2_DEBUG_MESSAGES
-  std::cout << "Exiv2::PngChunk::decodeTXTChunk: TXT chunk key: " << std::string(key.c_str(), key.size()) << std::endl;
+  std::cout << "Exiv2::PngChunk::decodeTXTChunk: TXT chunk key: " << std::string(key.c_str(), key.size()) << '\n';
 #endif
   return parseTXTChunk(data, key.size(), type);
 }
@@ -91,8 +91,7 @@ DataBuf PngChunk::parseTXTChunk(const DataBuf& data, size_t keysize, TxtChunkTyp
     // Extract a deflate compressed Latin-1 text chunk
 
     // we get the compression method after the key
-    const byte* compressionMethod = data.c_data(keysize + 1);
-    if (*compressionMethod != 0x00) {
+    if (*data.c_data(keysize + 1) != 0x00) {
       // then it isn't zlib compressed and we are sunk
 #ifdef EXIV2_DEBUG_MESSAGES
       std::cerr << "Exiv2::PngChunk::parseTXTChunk: Non-standard zTXt compression method.\n";
@@ -101,20 +100,24 @@ DataBuf PngChunk::parseTXTChunk(const DataBuf& data, size_t keysize, TxtChunkTyp
     }
 
     // compressed string after the compression technique spec
-    const byte* compressedText = data.c_data(keysize + nullSeparators);
     size_t compressedTextSize = data.size() - keysize - nullSeparators;
-    enforce(compressedTextSize < data.size(), ErrorCode::kerCorruptedMetadata);
+    if (compressedTextSize) {
+      const byte* compressedText = data.c_data(keysize + nullSeparators);
+      enforce(compressedTextSize < data.size(), ErrorCode::kerCorruptedMetadata);
 
-    zlibUncompress(compressedText, static_cast<uint32_t>(compressedTextSize), arr);
+      zlibUncompress(compressedText, static_cast<uint32_t>(compressedTextSize), arr);
+    }
   } else if (type == tEXt_Chunk) {
     enforce(data.size() >= Safe::add(keysize, static_cast<size_t>(1)), ErrorCode::kerCorruptedMetadata);
     // Extract a non-compressed Latin-1 text chunk
 
     // the text comes after the key, but isn't null terminated
-    const byte* text = data.c_data(keysize + 1);
     size_t textsize = data.size() - keysize - 1;
+    if (textsize) {
+      const byte* text = data.c_data(keysize + 1);
 
-    arr = DataBuf(text, textsize);
+      arr = DataBuf(text, textsize);
+    }
   } else if (type == iTXt_Chunk) {
     enforce(data.size() > Safe::add(keysize, static_cast<size_t>(3)), ErrorCode::kerCorruptedMetadata);
     const size_t nullCount = std::count(data.c_data(keysize + 3), data.c_data(data.size() - 1), '\0');
@@ -128,7 +131,8 @@ DataBuf PngChunk::parseTXTChunk(const DataBuf& data, size_t keysize, TxtChunkTyp
     const byte compressionMethod = data.read_uint8(keysize + 2);
 
     enforce(compressionFlag == 0x00 || compressionFlag == 0x01, ErrorCode::kerCorruptedMetadata);
-    enforce(compressionMethod == 0x00, ErrorCode::kerCorruptedMetadata);
+    if (compressionFlag == 0x01)
+      enforce(compressionMethod == 0x00, ErrorCode::kerFailedToReadImageData);
 
     // language description string after the compression technique spec
     const size_t languageTextMaxSize = data.size() - keysize - 3;
@@ -142,14 +146,14 @@ DataBuf PngChunk::parseTXTChunk(const DataBuf& data, size_t keysize, TxtChunkTyp
                                                              data.size() - (keysize + 3 + languageTextSize + 1));
     const size_t translatedKeyTextSize = translatedKeyText.size();
 
-    if ((compressionFlag == 0x00) || (compressionFlag == 0x01 && compressionMethod == 0x00)) {
-      enforce(Safe::add(keysize + 3 + languageTextSize + 1, Safe::add(translatedKeyTextSize, static_cast<size_t>(1))) <=
-                  data.size(),
-              ErrorCode::kerCorruptedMetadata);
+    enforce(Safe::add(keysize + 3 + languageTextSize + 1, Safe::add(translatedKeyTextSize, static_cast<size_t>(1))) <=
+                data.size(),
+            ErrorCode::kerCorruptedMetadata);
 
+    const auto textsize =
+        static_cast<long>(data.size() - (keysize + 3 + languageTextSize + 1 + translatedKeyTextSize + 1));
+    if (textsize) {
       const byte* text = data.c_data(keysize + 3 + languageTextSize + 1 + translatedKeyTextSize + 1);
-      const auto textsize =
-          static_cast<long>(data.size() - (keysize + 3 + languageTextSize + 1 + translatedKeyTextSize + 1));
 
       if (compressionFlag == 0x00) {
         // then it's an uncompressed iTXt chunk
@@ -157,7 +161,7 @@ DataBuf PngChunk::parseTXTChunk(const DataBuf& data, size_t keysize, TxtChunkTyp
         std::cout << "Exiv2::PngChunk::parseTXTChunk: We found an uncompressed iTXt field\n";
 #endif
         arr = DataBuf(text, textsize);
-      } else if (compressionFlag == 0x01 && compressionMethod == 0x00) {
+      } else {
         // then it's a zlib compressed iTXt chunk
 #ifdef EXIV2_DEBUG_MESSAGES
         std::cout << "Exiv2::PngChunk::parseTXTChunk: We found a zlib compressed iTXt field\n";
@@ -166,12 +170,6 @@ DataBuf PngChunk::parseTXTChunk(const DataBuf& data, size_t keysize, TxtChunkTyp
         // the compressed text comes after the translated keyword, but isn't null terminated
         zlibUncompress(text, textsize, arr);
       }
-    } else {
-      // then it isn't zlib compressed and we are sunk
-#ifdef EXIV2_DEBUG_MESSAGES
-      std::cerr << "Exiv2::PngChunk::parseTXTChunk: Non-standard iTXt compression method.\n";
-#endif
-      throw Error(ErrorCode::kerFailedToReadImageData);
     }
   } else {
 #ifdef DEBUG
@@ -271,8 +269,7 @@ void PngChunk::parseChunkContent(Image* pImage, const byte* key, size_t keySize,
     if (length > 0) {
       std::string& xmpPacket = pImage->xmpPacket();
       xmpPacket.assign(xmpBuf.c_str(), length);
-      std::string::size_type idx = xmpPacket.find_first_of('<');
-      if (idx != std::string::npos && idx > 0) {
+      if (auto idx = xmpPacket.find_first_of('<'); idx != std::string::npos && idx > 0) {
 #ifndef SUPPRESS_WARNINGS
         EXV_WARNING << "Removing " << idx << " characters from the beginning of the XMP packet\n";
 #endif
@@ -288,23 +285,20 @@ void PngChunk::parseChunkContent(Image* pImage, const byte* key, size_t keySize,
 
   // We look if an Adobe XMP string exist.
 
-  if (keySize >= 17 && memcmp("XML:com.adobe.xmp", key, 17) == 0 && pImage->xmpData().empty()) {
-    if (!arr.empty()) {
-      std::string& xmpPacket = pImage->xmpPacket();
-      xmpPacket.assign(arr.c_str(), arr.size());
-      std::string::size_type idx = xmpPacket.find_first_of('<');
-      if (idx != std::string::npos && idx > 0) {
+  if (keySize >= 17 && memcmp("XML:com.adobe.xmp", key, 17) == 0 && pImage->xmpData().empty() && !arr.empty()) {
+    std::string& xmpPacket = pImage->xmpPacket();
+    xmpPacket.assign(arr.c_str(), arr.size());
+    if (auto idx = xmpPacket.find_first_of('<'); idx != std::string::npos && idx > 0) {
 #ifndef SUPPRESS_WARNINGS
-        EXV_WARNING << "Removing " << idx << " characters "
-                    << "from the beginning of the XMP packet\n";
+      EXV_WARNING << "Removing " << idx << " characters "
+                  << "from the beginning of the XMP packet\n";
 #endif
-        xmpPacket = xmpPacket.substr(idx);
-      }
-      if (XmpParser::decode(pImage->xmpData(), xmpPacket)) {
+      xmpPacket = xmpPacket.substr(idx);
+    }
+    if (XmpParser::decode(pImage->xmpData(), xmpPacket)) {
 #ifndef SUPPRESS_WARNINGS
-        EXV_WARNING << "Failed to decode XMP metadata.\n";
+      EXV_WARNING << "Failed to decode XMP metadata.\n";
 #endif
-      }
     }
   }
 
@@ -318,40 +312,32 @@ void PngChunk::parseChunkContent(Image* pImage, const byte* key, size_t keySize,
 }  // PngChunk::parseChunkContent
 
 std::string PngChunk::makeMetadataChunk(const std::string& metadata, MetadataId type) {
-  std::string chunk;
   std::string rawProfile;
 
   switch (type) {
     case mdComment:
-      chunk = makeUtf8TxtChunk("Description", metadata, true);
-      break;
-    case mdExif:
-      rawProfile = writeRawProfile(metadata, "exif");
-      chunk = makeAsciiTxtChunk("Raw profile type exif", rawProfile, true);
-      break;
+      return makeUtf8TxtChunk("Description", metadata, true);
     case mdIptc:
       rawProfile = writeRawProfile(metadata, "iptc");
-      chunk = makeAsciiTxtChunk("Raw profile type iptc", rawProfile, true);
-      break;
+      return makeAsciiTxtChunk("Raw profile type iptc", rawProfile, true);
     case mdXmp:
-      chunk = makeUtf8TxtChunk("XML:com.adobe.xmp", metadata, false);
-      break;
+      return makeUtf8TxtChunk("XML:com.adobe.xmp", metadata, false);
+    case mdExif:
     case mdIccProfile:
-      break;
     case mdNone:
-      break;
+      return {};
   }
 
-  return chunk;
+  return {};
 
 }  // PngChunk::makeMetadataChunk
 
 void PngChunk::zlibUncompress(const byte* compressedText, unsigned int compressedTextSize, DataBuf& arr) {
   uLongf uncompressedLen = compressedTextSize * 2;  // just a starting point
-  int zlibResult;
+  int zlibResult = Z_BUF_ERROR;
   int dos = 0;
 
-  do {
+  while (zlibResult == Z_BUF_ERROR) {
     arr.alloc(uncompressedLen);
     zlibResult = uncompress(arr.data(), &uncompressedLen, compressedText, compressedTextSize);
     if (zlibResult == Z_OK) {
@@ -369,7 +355,7 @@ void PngChunk::zlibUncompress(const byte* compressedText, unsigned int compresse
       // something bad happened
       throw Error(ErrorCode::kerFailedToReadImageData);
     }
-  } while (zlibResult == Z_BUF_ERROR);
+  };
 
   if (zlibResult != Z_OK) {
     throw Error(ErrorCode::kerFailedToReadImageData);
@@ -378,10 +364,10 @@ void PngChunk::zlibUncompress(const byte* compressedText, unsigned int compresse
 
 std::string PngChunk::zlibCompress(const std::string& text) {
   auto compressedLen = static_cast<uLongf>(text.size() * 2);  // just a starting point
-  int zlibResult;
+  int zlibResult = Z_BUF_ERROR;
 
   DataBuf arr;
-  do {
+  while (zlibResult == Z_BUF_ERROR) {
     arr.resize(compressedLen);
     zlibResult = compress2(arr.data(), &compressedLen, reinterpret_cast<const Bytef*>(text.data()),
                            static_cast<uLong>(text.size()), Z_BEST_COMPRESSION);
@@ -404,7 +390,7 @@ std::string PngChunk::zlibCompress(const std::string& text) {
         // Something bad happened
         throw Error(ErrorCode::kerFailedToReadImageData);
     }
-  } while (zlibResult == Z_BUF_ERROR);
+  };
 
   return {arr.c_str(), arr.size()};
 
@@ -481,15 +467,16 @@ std::string PngChunk::makeUtf8TxtChunk(const std::string& keyword, const std::st
 }  // PngChunk::makeUtf8TxtChunk
 
 DataBuf PngChunk::readRawProfile(const DataBuf& text, bool iTXt) {
+  DataBuf info;
   if (text.size() <= 1) {
-    return {};
+    return info;
   }
 
-  DataBuf info;
-  unsigned char unhex[103] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  0,  0,  0,  0,  0, 0,
-                              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  0,  0,  0,  1,  2, 3,
-                              4, 5, 6, 7, 8, 9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  0,  0,  0,  0,  0, 0,
-                              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 11, 12, 13, 14, 15};
+  const unsigned char unhex[103] = {
+      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  0,  0,  0,  0,  0,  0, 0,
+      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 0, 0, 0, 0,  0,  0,  0,  0,  0,  0, 0,
+      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 11, 12, 13, 14, 15,
+  };
 
   if (iTXt) {
     info.alloc(text.size());
@@ -501,26 +488,26 @@ DataBuf PngChunk::readRawProfile(const DataBuf& text, bool iTXt) {
   const char* eot = text.c_str(text.size() - 1);  // end of text
 
   if (sp >= eot) {
-    return {};
+    return info;
   }
 
   // Look for newline
   while (*sp != '\n') {
     sp++;
     if (sp == eot) {
-      return {};
+      return info;
     }
   }
   sp++;  // step over '\n'
   if (sp == eot) {
-    return {};
+    return info;
   }
 
   // Look for length
   while (*sp == '\0' || *sp == ' ' || *sp == '\n') {
     sp++;
     if (sp == eot) {
-      return {};
+      return info;
     }
   }
 
@@ -529,18 +516,15 @@ DataBuf PngChunk::readRawProfile(const DataBuf& text, bool iTXt) {
   while ('0' <= *sp && *sp <= '9') {
     // Compute the new length using unsigned long, so that we can check for overflow.
     const size_t newlength = (10 * length) + (*sp - '0');
-    if (newlength > std::numeric_limits<size_t>::max()) {
-      return {};  // Integer overflow.
-    }
     length = newlength;
     sp++;
     if (sp == eot) {
-      return {};
+      return info;
     }
   }
   sp++;  // step over '\n'
   if (sp == eot) {
-    return {};
+    return info;
   }
 
   enforce(length <= static_cast<size_t>(eot - sp) / 2, Exiv2::ErrorCode::kerCorruptedMetadata);
@@ -556,7 +540,7 @@ DataBuf PngChunk::readRawProfile(const DataBuf& text, bool iTXt) {
 #ifdef EXIV2_DEBUG_MESSAGES
     std::cerr << "Exiv2::PngChunk::readRawProfile: Unable To Copy Raw Profile: cannot allocate memory\n";
 #endif
-    return {};
+    return info;
   }
 
   if (info.empty())  // Early return
@@ -581,9 +565,9 @@ DataBuf PngChunk::readRawProfile(const DataBuf& text, bool iTXt) {
     }
 
     if (i % 2 == 0)
-      *dp = static_cast<unsigned char>(16 * unhex[static_cast<int>(*sp++)]);
+      *dp = static_cast<unsigned char>(16 * unhex[static_cast<size_t>(*sp++)]);
     else
-      (*dp++) += unhex[static_cast<int>(*sp++)];
+      (*dp++) += unhex[static_cast<size_t>(*sp++)];
   }
 
   return info;
@@ -591,16 +575,16 @@ DataBuf PngChunk::readRawProfile(const DataBuf& text, bool iTXt) {
 }  // PngChunk::readRawProfile
 
 std::string PngChunk::writeRawProfile(const std::string& profileData, const char* profileType) {
-  static byte hex[16] = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f'};
+  static const byte hex[16] = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f'};
 
   std::ostringstream oss;
   oss << '\n' << profileType << '\n' << std::setw(8) << profileData.size();
-  const char* sp = profileData.data();
+  auto sp = reinterpret_cast<const byte*>(profileData.data());
   for (std::string::size_type i = 0; i < profileData.size(); ++i) {
     if (i % 36 == 0)
       oss << '\n';
-    oss << hex[((*sp >> 4) & 0x0f)];
-    oss << hex[((*sp++) & 0x0f)];
+    oss << hex[*sp >> 4 & 0x0fU];
+    oss << hex[*sp++ & 0x0fU];
   }
   oss << '\n';
   return oss.str();

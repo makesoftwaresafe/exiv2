@@ -52,13 +52,13 @@ class EXIV2API TiffImage : public Image {
           not valid (does not look like data of the specific image type).
     @warning This function is not thread safe and intended for exiv2 -p{S|R} as a file debugging aid
    */
-  void printStructure(std::ostream& out, PrintStructureOption option, int depth = 0) override;
+  void printStructure(std::ostream& out, PrintStructureOption option, size_t depth) override;
 
   /*!
     @brief Not supported. TIFF format does not contain a comment.
         Calling this function will throw an Error(ErrorCode::kerInvalidSettingForImage).
    */
-  void setComment(std::string_view comment) override;
+  void setComment(const std::string&) override;
   //@}
 
   //! @name Accessors
@@ -66,15 +66,6 @@ class EXIV2API TiffImage : public Image {
   std::string mimeType() const override;
   uint32_t pixelWidth() const override;
   uint32_t pixelHeight() const override;
-  //@}
-
-  ~TiffImage() override = default;
-  //! @name NOT Implemented
-  //@{
-  //! Copy constructor
-  TiffImage(const TiffImage&) = delete;
-  //! Assignment operator
-  TiffImage& operator=(const TiffImage&) = delete;
   //@}
 
  private:
@@ -85,10 +76,10 @@ class EXIV2API TiffImage : public Image {
   //@}
 
   // DATA
-  mutable std::string primaryGroup_;     //!< The primary group
-  mutable std::string mimeType_;         //!< The MIME type
-  mutable uint32_t pixelWidthPrimary_;   //!< Width of the primary image in pixels
-  mutable uint32_t pixelHeightPrimary_;  //!< Height of the primary image in pixels
+  mutable std::string primaryGroup_;        //!< The primary group
+  mutable std::string mimeType_;            //!< The MIME type
+  mutable uint32_t pixelWidthPrimary_{0};   //!< Width of the primary image in pixels
+  mutable uint32_t pixelHeightPrimary_{0};  //!< Height of the primary image in pixels
 
 };  // class TiffImage
 
@@ -146,8 +137,8 @@ class EXIV2API TiffParser {
 
     @return Write method used.
   */
-  static WriteMethod encode(BasicIo& io, const byte* pData, size_t size, ByteOrder byteOrder, const ExifData& exifData,
-                            const IptcData& iptcData, const XmpData& xmpData);
+  static WriteMethod encode(BasicIo& io, const byte* pData, size_t size, ByteOrder byteOrder, ExifData& exifData,
+                            IptcData& iptcData, XmpData& xmpData);
 
 };  // class TiffParser
 

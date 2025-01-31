@@ -19,15 +19,13 @@
 
 // + standard includes
 #include <algorithm>
+#include <functional>
 #include <iomanip>
-
-#if defined WIN32 && !defined __CYGWIN__
-#include <windows.h>
-#endif
 
 #ifdef EXV_HAVE_ICONV
 #include <iconv.h>
-#include <cerrno>
+#elif defined _WIN32
+#include <windows.h>
 #endif
 
 // Adobe XMP Toolkit
@@ -44,13 +42,12 @@
 // *****************************************************************************
 // local declarations
 namespace {
-#if defined WIN32 && !defined __CYGWIN__
-// Convert string charset with Windows functions.
-bool convertStringCharsetWindows(std::string& str, const char* from, const char* to);
-#endif
 #if defined EXV_HAVE_ICONV
 // Convert string charset with iconv.
 bool convertStringCharsetIconv(std::string& str, const char* from, const char* to);
+#elif defined _WIN32
+// Convert string charset with Windows functions.
+bool convertStringCharsetWindows(std::string& str, const char* from, const char* to);
 #endif
 /*!
   @brief Get the text value of an XmpDatum \em pos.
@@ -274,9 +271,9 @@ class Converter {
   std::string computeExifDigest(bool tiff);
 
   // DATA
-  static const Conversion conversion_[];  //<! Conversion rules
-  bool erase_;
-  bool overwrite_;
+  static const Conversion conversion_[];  //!< Conversion rules
+  bool erase_{false};
+  bool overwrite_{true};
   ExifData* exifData_;
   IptcData* iptcData_;
   XmpData* xmpData_;
@@ -490,27 +487,17 @@ const Converter::Conversion Converter::conversion_[] = {
 };
 
 Converter::Converter(ExifData& exifData, XmpData& xmpData) :
-    erase_(false),
-    overwrite_(true),
-    exifData_(&exifData),
-    iptcData_(nullptr),
-    xmpData_(&xmpData),
-    iptcCharset_(nullptr) {
+    exifData_(&exifData), iptcData_(nullptr), xmpData_(&xmpData), iptcCharset_(nullptr) {
 }
 
 Converter::Converter(IptcData& iptcData, XmpData& xmpData, const char* iptcCharset) :
-    erase_(false),
-    overwrite_(true),
-    exifData_(nullptr),
-    iptcData_(&iptcData),
-    xmpData_(&xmpData),
-    iptcCharset_(iptcCharset) {
+    exifData_(nullptr), iptcData_(&iptcData), xmpData_(&xmpData), iptcCharset_(iptcCharset) {
 }
 
 void Converter::cnvToXmp() {
   for (auto&& c : conversion_) {
     if ((c.metadataId_ == mdExif && exifData_) || (c.metadataId_ == mdIptc && iptcData_)) {
-      EXV_CALL_MEMBER_FN(*this, c.key1ToKey2_)(c.key1_, c.key2_);
+      std::invoke(c.key1ToKey2_, *this, c.key1_, c.key2_);
     }
   }
 }
@@ -518,7 +505,7 @@ void Converter::cnvToXmp() {
 void Converter::cnvFromXmp() {
   for (auto&& c : conversion_) {
     if ((c.metadataId_ == mdExif && exifData_) || (c.metadataId_ == mdIptc && iptcData_)) {
-      EXV_CALL_MEMBER_FN(*this, c.key2ToKey1_)(c.key2_, c.key1_);
+      std::invoke(c.key2ToKey1_, *this, c.key2_, c.key1_);
     }
   }
 }
@@ -590,7 +577,13 @@ void Converter::cnvExifComment(const char* from, const char* to) {
     return;
   }
   // Todo: Convert to UTF-8 if necessary
-  (*xmpData_)[to] = cv->comment();
+  try {
+    (*xmpData_)[to] = cv->comment();
+  } catch (const Error&) {
+#ifndef SUPPRESS_WARNINGS
+    EXV_WARNING << "Failed to convert " << from << " to " << to << "\n";
+#endif
+  }
   if (erase_)
     exifData_->erase(pos);
 }
@@ -621,7 +614,12 @@ void Converter::cnvExifDate(const char* from, const char* to) {
     return;
   if (!prepareXmpTarget(to))
     return;
-  int year = 0, month = 0, day = 0, hour = 0, min = 0, sec = 0;
+  int year = 0;
+  int month = 0;
+  int day = 0;
+  int hour = 0;
+  int min = 0;
+  int sec = 0;
   std::string subsec;
   char buf[30];
 
@@ -640,7 +638,6 @@ void Converter::cnvExifDate(const char* from, const char* to) {
       return;
     }
   } else {  // "Exif.GPSInfo.GPSTimeStamp"
-
     bool ok = true;
     if (pos->count() != 3)
       ok = false;
@@ -735,7 +732,7 @@ void Converter::cnvExifDate(const char* from, const char* to) {
   }
 
   if (subsec.size() > 10)
-    subsec = subsec.substr(0, 10);
+    subsec.resize(10);
   snprintf(buf, sizeof(buf), "%4d-%02d-%02dT%02d:%02d:%02d%s", year, month, day, hour, min, sec, subsec.c_str());
   buf[sizeof(buf) - 1] = 0;
 
@@ -782,7 +779,7 @@ void Converter::cnvExifFlash(const char* from, const char* to) {
     return;
   if (!prepareXmpTarget(to))
     return;
-  auto value = pos->toInt64();
+  auto value = pos->toUint32();
   if (!pos->value().ok()) {
 #ifndef SUPPRESS_WARNINGS
     EXV_WARNING << "Failed to convert " << from << " to " << to << "\n";
@@ -831,7 +828,7 @@ void Converter::cnvExifGPSCoord(const char* from, const char* to) {
     // Hack: Need Value::toDouble
     deg[i] = static_cast<double>(z) / d;
   }
-  double min = deg[0] * 60.0 + deg[1] + deg[2] / 60.0;
+  double min = (deg[0] * 60.0) + deg[1] + (deg[2] / 60.0);
   auto ideg = static_cast<int>(min / 60.0);
   min -= ideg * 60;
   std::ostringstream oss;
@@ -859,8 +856,7 @@ void Converter::cnvXmpValue(const char* from, const char* to) {
   }
   // Todo: Escape non-ASCII characters in XMP text values
   ExifKey key(to);
-  Exifdatum ed(key);
-  if (0 == ed.setValue(value)) {
+  if (auto ed = Exifdatum(key); ed.setValue(value) == 0) {
     exifData_->add(ed);
   }
   if (erase_)
@@ -931,9 +927,8 @@ void Converter::cnvXmpDate(const char* from, const char* to) {
     if (std::string(to) != "Exif.GPSInfo.GPSTimeStamp") {
       SXMPUtils::ConvertToLocalTime(&datetime);
 
-      snprintf(buf, sizeof(buf), "%4d:%02d:%02d %02d:%02d:%02d", static_cast<int>(datetime.year),
-               static_cast<int>(datetime.month), static_cast<int>(datetime.day), static_cast<int>(datetime.hour),
-               static_cast<int>(datetime.minute), static_cast<int>(datetime.second));
+      snprintf(buf, sizeof(buf), "%4d:%02d:%02d %02d:%02d:%02d", datetime.year, datetime.month, datetime.day,
+               datetime.hour, datetime.minute, datetime.second);
       buf[sizeof(buf) - 1] = 0;
       (*exifData_)[to] = buf;
 
@@ -948,11 +943,10 @@ void Converter::cnvXmpDate(const char* from, const char* to) {
         }
         if (subsecTag) {
           prepareExifTarget(subsecTag, true);
-          (*exifData_)[subsecTag] = toString(datetime.nanoSecond);
+          (*exifData_)[subsecTag] = std::to_string(datetime.nanoSecond);
         }
       }
     } else {  // "Exif.GPSInfo.GPSTimeStamp"
-
       // Ignore the time zone, assuming the time is in UTC as it should be
 
       URational rhour(datetime.hour, 1);
@@ -974,8 +968,7 @@ void Converter::cnvXmpDate(const char* from, const char* to) {
       (*exifData_)[to] = array.str();
 
       prepareExifTarget("Exif.GPSInfo.GPSDateStamp", true);
-      snprintf(buf, sizeof(buf), "%4d:%02d:%02d", static_cast<int>(datetime.year), static_cast<int>(datetime.month),
-               static_cast<int>(datetime.day));
+      snprintf(buf, sizeof(buf), "%4d:%02d:%02d", datetime.year, datetime.month, datetime.day);
       buf[sizeof(buf) - 1] = 0;
       (*exifData_)["Exif.GPSInfo.GPSDateStamp"] = buf;
     }
@@ -1052,57 +1045,57 @@ void Converter::cnvXmpFlash(const char* from, const char* to) {
   unsigned short value = 0;
 
   if (pos != xmpData_->end() && pos->count() > 0) {
-    auto fired = pos->toInt64();
+    auto fired = pos->toUint32();
     if (pos->value().ok())
       value |= fired & 1;
 #ifndef SUPPRESS_WARNINGS
     else
-      EXV_WARNING << "Failed to convert " << std::string(from) + "/exif:Fired"
+      EXV_WARNING << "Failed to convert " << std::string(from) << "/exif:Fired"
                   << " to " << to << "\n";
 #endif
   }
   pos = xmpData_->findKey(XmpKey(std::string(from) + "/exif:Return"));
   if (pos != xmpData_->end() && pos->count() > 0) {
-    auto ret = pos->toInt64();
+    auto ret = pos->toUint32();
     if (pos->value().ok())
       value |= (ret & 3) << 1;
 #ifndef SUPPRESS_WARNINGS
     else
-      EXV_WARNING << "Failed to convert " << std::string(from) + "/exif:Return"
+      EXV_WARNING << "Failed to convert " << std::string(from) << "/exif:Return"
                   << " to " << to << "\n";
 #endif
   }
   pos = xmpData_->findKey(XmpKey(std::string(from) + "/exif:Mode"));
   if (pos != xmpData_->end() && pos->count() > 0) {
-    auto mode = pos->toInt64();
+    auto mode = pos->toUint32();
     if (pos->value().ok())
       value |= (mode & 3) << 3;
 #ifndef SUPPRESS_WARNINGS
     else
-      EXV_WARNING << "Failed to convert " << std::string(from) + "/exif:Mode"
+      EXV_WARNING << "Failed to convert " << std::string(from) << "/exif:Mode"
                   << " to " << to << "\n";
 #endif
   }
   pos = xmpData_->findKey(XmpKey(std::string(from) + "/exif:Function"));
   if (pos != xmpData_->end() && pos->count() > 0) {
-    auto function = pos->toInt64();
+    auto function = pos->toUint32();
     if (pos->value().ok())
       value |= (function & 1) << 5;
 #ifndef SUPPRESS_WARNINGS
     else
-      EXV_WARNING << "Failed to convert " << std::string(from) + "/exif:Function"
+      EXV_WARNING << "Failed to convert " << std::string(from) << "/exif:Function"
                   << " to " << to << "\n";
 #endif
   }
   pos = xmpData_->findKey(XmpKey(std::string(from) + "/exif:RedEyeMode"));
   if (pos != xmpData_->end()) {
     if (pos->count() > 0) {
-      auto red = pos->toInt64();
+      auto red = pos->toUint32();
       if (pos->value().ok())
         value |= (red & 1) << 6;
 #ifndef SUPPRESS_WARNINGS
       else
-        EXV_WARNING << "Failed to convert " << std::string(from) + "/exif:RedEyeMode"
+        EXV_WARNING << "Failed to convert " << std::string(from) << "/exif:RedEyeMode"
                     << " to " << to << "\n";
 #endif
     }
@@ -1136,11 +1129,11 @@ void Converter::cnvXmpGPSCoord(const char* from, const char* to) {
   double deg = 0.0;
   double min = 0.0;
   double sec = 0.0;
-  char ref = value[value.length() - 1];
+  char ref = value.back();
   char sep1 = '\0';
   char sep2 = '\0';
 
-  value.erase(value.length() - 1);
+  value.pop_back();
 
   std::istringstream in(value);
 
@@ -1153,7 +1146,7 @@ void Converter::cnvXmpGPSCoord(const char* from, const char* to) {
     min = static_cast<double>(static_cast<int>(min));
   }
 
-  if (in.bad() || !(ref == 'N' || ref == 'S' || ref == 'E' || ref == 'W') || sep1 != ',' || !in.eof()) {
+  if (in.bad() || (ref != 'N' && ref != 'S' && ref != 'E' && ref != 'W') || sep1 != ',' || !in.eof()) {
 #ifndef SUPPRESS_WARNINGS
     EXV_WARNING << "Failed to convert " << from << " to " << to << "\n";
 #endif
@@ -1229,7 +1222,7 @@ void Converter::cnvXmpValueToIptc(const char* from, const char* to) {
   size_t count = pos->count();
   bool added = false;
   for (size_t i = 0; i < count; ++i) {
-    std::string value = pos->toString(static_cast<long>(i));
+    std::string value = pos->toString(i);
     if (!pos->value().ok()) {
 #ifndef SUPPRESS_WARNINGS
       EXV_WARNING << "Failed to convert " << from << " to " << to << "\n";
@@ -1277,14 +1270,14 @@ std::string Converter::computeExifDigest(bool tiff) {
   MD5Final(digest, &context);
   res << ';';
   res << std::setw(2) << std::setfill('0') << std::hex << std::uppercase;
-  for (auto&& i : digest) {
+  for (const auto& i : digest) {
     res << static_cast<int>(i);
   }
   return res.str();
 }
 #else
 std::string Converter::computeExifDigest(bool) {
-  return std::string("");
+  return {};
 }
 #endif
 
@@ -1392,21 +1385,19 @@ void moveXmpToIptc(XmpData& xmpData, IptcData& iptcData) {
   converter.cnvFromXmp();
 }
 
-bool convertStringCharset(std::string& str, const char* from, const char* to) {
+bool convertStringCharset([[maybe_unused]] std::string& str, const char* from, const char* to) {
   if (0 == strcmp(from, to))
     return true;  // nothing to do
-  bool ret = false;
 #if defined EXV_HAVE_ICONV
-  ret = convertStringCharsetIconv(str, from, to);
-#elif defined WIN32 && !defined __CYGWIN__
-  ret = convertStringCharsetWindows(str, from, to);
+  return convertStringCharsetIconv(str, from, to);
+#elif defined _WIN32
+  return convertStringCharsetWindows(str, from, to);
 #else
 #ifndef SUPPRESS_WARNINGS
   EXV_WARNING << "Charset conversion required but no character mapping functionality available.\n";
 #endif
-  UNUSED(str);
+  return false;
 #endif
-  return ret;
 }
 }  // namespace Exiv2
 
@@ -1415,7 +1406,51 @@ bool convertStringCharset(std::string& str, const char* from, const char* to) {
 namespace {
 using namespace Exiv2;
 
-#if defined WIN32 && !defined __CYGWIN__
+#if defined EXV_HAVE_ICONV
+bool convertStringCharsetIconv(std::string& str, const char* from, const char* to) {
+  if (strcmp(from, to) == 0)
+    return true;  // nothing to do
+
+  bool ret = true;
+  auto cd = iconv_open(to, from);
+  if (cd == iconv_t(-1)) {
+#ifndef SUPPRESS_WARNINGS
+    EXV_WARNING << "iconv_open: " << strError() << "\n";
+#endif
+    return false;
+  }
+  std::string outstr;
+#ifdef WINICONV_CONST
+  auto inptr = (WINICONV_CONST char*)(str.c_str());
+#else
+  auto inptr = (EXV_ICONV_CONST char*)(str.c_str());
+#endif
+  size_t inbytesleft = str.length();
+  while (inbytesleft) {
+    char outbuf[256];
+    char* outptr = outbuf;
+    size_t outbytesleft = sizeof(outbuf);
+    size_t rc = iconv(cd, &inptr, &inbytesleft, &outptr, &outbytesleft);
+    const size_t outbytesProduced = sizeof(outbuf) - outbytesleft;
+    if (rc == std::numeric_limits<size_t>::max() && errno != E2BIG) {
+#ifndef SUPPRESS_WARNINGS
+      EXV_WARNING << "iconv: " << strError() << " inbytesleft = " << inbytesleft << "\n";
+#endif
+      ret = false;
+      break;
+    }
+    outstr.append(std::string(outbuf, outbytesProduced));
+  }
+
+  if (cd)
+    iconv_close(cd);
+
+  if (ret)
+    str = outstr;
+  return ret;
+}
+
+#elif defined(_WIN32)
 bool swapBytes(std::string& str) {
   // Naive byte-swapping, I'm sure this can be done more efficiently
   if (str.size() & 1) {
@@ -1435,7 +1470,7 @@ bool swapBytes(std::string& str) {
 bool mb2wc(UINT cp, std::string& str) {
   if (str.empty())
     return true;
-  int len = MultiByteToWideChar(cp, 0, str.c_str(), (int)str.size(), 0, 0);
+  int len = MultiByteToWideChar(cp, 0, str.c_str(), static_cast<int>(str.size()), nullptr, 0);
   if (len == 0) {
 #ifdef EXIV2_DEBUG_MESSAGES
     EXV_DEBUG << "mb2wc: Failed to determine required size of output buffer.\n";
@@ -1444,7 +1479,8 @@ bool mb2wc(UINT cp, std::string& str) {
   }
   std::vector<std::string::value_type> out;
   out.resize(len * 2);
-  int ret = MultiByteToWideChar(cp, 0, str.c_str(), (int)str.size(), (LPWSTR)&out[0], len * 2);
+  int ret = MultiByteToWideChar(cp, 0, str.c_str(), static_cast<int>(str.size()), reinterpret_cast<LPWSTR>(out.data()),
+                                len * 2);
   if (ret == 0) {
 #ifdef EXIV2_DEBUG_MESSAGES
     EXV_DEBUG << "mb2wc: Failed to convert the input string to a wide character string.\n";
@@ -1464,7 +1500,8 @@ bool wc2mb(UINT cp, std::string& str) {
 #endif
     return false;
   }
-  int len = WideCharToMultiByte(cp, 0, (LPCWSTR)str.data(), (int)str.size() / 2, 0, 0, 0, 0);
+  int len = WideCharToMultiByte(cp, 0, reinterpret_cast<LPCWSTR>(str.data()), static_cast<int>(str.size()) / 2, nullptr,
+                                0, nullptr, nullptr);
   if (len == 0) {
 #ifdef EXIV2_DEBUG_MESSAGES
     EXV_DEBUG << "wc2mb: Failed to determine required size of output buffer.\n";
@@ -1473,7 +1510,8 @@ bool wc2mb(UINT cp, std::string& str) {
   }
   std::vector<std::string::value_type> out;
   out.resize(len);
-  int ret = WideCharToMultiByte(cp, 0, (LPCWSTR)str.data(), (int)str.size() / 2, (LPSTR)&out[0], len, 0, 0);
+  int ret = WideCharToMultiByte(cp, 0, reinterpret_cast<LPCWSTR>(str.data()), static_cast<int>(str.size()) / 2,
+                                static_cast<LPSTR>(out.data()), len, nullptr, nullptr);
   if (ret == 0) {
 #ifdef EXIV2_DEBUG_MESSAGES
     EXV_DEBUG << "wc2mb: Failed to convert the input string to a multi byte string.\n";
@@ -1526,7 +1564,7 @@ bool asciiToUtf8(std::string& /*str*/) {
   return true;
 }
 
-using ConvFct = std::function<bool(std::string&)>;
+using ConvFct = bool (*)(std::string&);
 
 struct ConvFctList {
   bool operator==(const std::pair<const char*, const char*>& fromTo) const {
@@ -1537,18 +1575,18 @@ struct ConvFctList {
   ConvFct convFct_;
 };
 
-const ConvFctList convFctList[] = {
-    {"UTF-8", "UCS-2BE", utf8ToUcs2be},      {"UTF-8", "UCS-2LE", utf8ToUcs2le}, {"UCS-2BE", "UTF-8", ucs2beToUtf8},
-    {"UCS-2BE", "UCS-2LE", ucs2beToUcs2le},  {"UCS-2LE", "UTF-8", ucs2leToUtf8}, {"UCS-2LE", "UCS-2BE", ucs2leToUcs2be},
-    {"ISO-8859-1", "UTF-8", iso88591ToUtf8}, {"ASCII", "UTF-8", asciiToUtf8}
+constexpr ConvFctList convFctList[] = {
+    {"UTF-8", "UCS-2BE", &utf8ToUcs2be},      {"UTF-8", "UCS-2LE", &utf8ToUcs2le},
+    {"UCS-2BE", "UTF-8", &ucs2beToUtf8},      {"UCS-2BE", "UCS-2LE", &ucs2beToUcs2le},
+    {"UCS-2LE", "UTF-8", &ucs2leToUtf8},      {"UCS-2LE", "UCS-2BE", &ucs2leToUcs2be},
+    {"ISO-8859-1", "UTF-8", &iso88591ToUtf8}, {"ASCII", "UTF-8", &asciiToUtf8},
     // Update the convertStringCharset() documentation if you add more here!
 };
 
-bool convertStringCharsetWindows(std::string& str, const char* from, const char* to) {
+[[maybe_unused]] bool convertStringCharsetWindows(std::string& str, const char* from, const char* to) {
   bool ret = false;
-  const ConvFctList* p = find(convFctList, std::pair(from, to));
   std::string tmpstr = str;
-  if (p)
+  if (auto p = Exiv2::find(convFctList, std::pair(from, to)))
     ret = p->convFct_(tmpstr);
 #ifndef SUPPRESS_WARNINGS
   else {
@@ -1557,48 +1595,6 @@ bool convertStringCharsetWindows(std::string& str, const char* from, const char*
 #endif
   if (ret)
     str = tmpstr;
-  return ret;
-}
-
-#endif  // defined WIN32 && !defined __CYGWIN__
-#if defined EXV_HAVE_ICONV
-bool convertStringCharsetIconv(std::string& str, const char* from, const char* to) {
-  if (0 == strcmp(from, to))
-    return true;  // nothing to do
-
-  bool ret = true;
-  iconv_t cd;
-  cd = iconv_open(to, from);
-  if (!cd) {
-#ifndef SUPPRESS_WARNINGS
-    EXV_WARNING << "iconv_open: " << strError() << "\n";
-#endif
-    return false;
-  }
-  std::string outstr;
-  auto inptr = const_cast<char*>(str.c_str());
-  size_t inbytesleft = str.length();
-  while (inbytesleft) {
-    char outbuf[256];
-    char* outptr = outbuf;
-    size_t outbytesleft = sizeof(outbuf);
-    size_t rc = iconv(cd, &inptr, &inbytesleft, &outptr, &outbytesleft);
-    const size_t outbytesProduced = sizeof(outbuf) - outbytesleft;
-    if (rc == static_cast<size_t>(-1) && errno != E2BIG) {
-#ifndef SUPPRESS_WARNINGS
-      EXV_WARNING << "iconv: " << strError() << " inbytesleft = " << inbytesleft << "\n";
-#endif
-      ret = false;
-      break;
-    }
-    outstr.append(std::string(outbuf, outbytesProduced));
-  }
-  if (cd) {
-    iconv_close(cd);
-  }
-
-  if (ret)
-    str = outstr;
   return ret;
 }
 
@@ -1611,7 +1607,7 @@ bool getTextValue(std::string& value, const XmpData::iterator& pos) {
       // If there is no default but exactly one entry, take that
       // without the qualifier
       value = pos->toString();
-      if (pos->value().ok() && value.length() > 5 && value.substr(0, 5) == "lang=") {
+      if (pos->value().ok() && value.starts_with("lang=")) {
         const std::string::size_type first_space_pos = value.find_first_of(' ');
         if (first_space_pos != std::string::npos) {
           value = value.substr(first_space_pos + 1);

@@ -96,10 +96,11 @@ class EXIV2API Iptcdatum : public Metadatum {
    */
   [[nodiscard]] std::string key() const override;
   /*!
-     @brief Return the name of the record (deprecated)
+     @brief Return the name of the record
      @return record name
+     @deprecated This function is deprecated.
    */
-  [[nodiscard]] std::string recordName() const;
+  [[deprecated]] [[nodiscard]] std::string recordName() const;
   /*!
      @brief Return the record id
      @return record id
@@ -113,6 +114,7 @@ class EXIV2API Iptcdatum : public Metadatum {
    */
   [[nodiscard]] std::string tagName() const override;
   [[nodiscard]] std::string tagLabel() const override;
+  [[nodiscard]] std::string tagDesc() const override;
   //! Return the tag (aka dataset) number
   [[nodiscard]] uint16_t tag() const override;
   [[nodiscard]] TypeId typeId() const override;
@@ -176,7 +178,7 @@ class EXIV2API IptcData {
     @return 0 if successful;<BR>
             6 if the dataset already exists and is not repeatable
    */
-  int add(const IptcKey& key, Value* value);
+  int add(const IptcKey& key, const Value* value);
   /*!
     @brief Add a copy of the Iptcdatum to the IPTC metadata. A check
            for non-repeatable datasets is performed.
@@ -243,7 +245,7 @@ class EXIV2API IptcData {
   [[nodiscard]] const_iterator findId(uint16_t dataset, uint16_t record = IptcDataSets::application2) const;
   //! Return true if there is no IPTC metadata
   [[nodiscard]] bool empty() const {
-    return count() == 0;
+    return iptcMetadata_.empty();
   }
 
   //! Get the number of metadata entries
@@ -258,7 +260,7 @@ class EXIV2API IptcData {
   [[nodiscard]] const char* detectCharset() const;
 
   //!  @brief dump iptc formatted binary data (used by printStructure kpsRecursive)
-  static void printStructure(std::ostream& out, const Slice<byte*>& bytes, uint32_t depth);
+  static void printStructure(std::ostream& out, const Slice<byte*>& bytes, size_t depth);
   //@}
 
  private:

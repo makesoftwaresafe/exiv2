@@ -52,6 +52,9 @@ class Loader {
   //! Virtual destructor.
   virtual ~Loader() = default;
 
+  Loader(const Loader&) = delete;
+  Loader& operator=(const Loader&) = delete;
+
   //! Loader auto pointer
   using UniquePtr = std::unique_ptr<Loader>;
 
@@ -101,16 +104,16 @@ class Loader {
   const Image& image_;
 
   //! Preview image width
-  size_t width_;
+  size_t width_{0};
 
   //! Preview image length
-  size_t height_;
+  size_t height_{0};
 
   //! Preview image size in bytes
-  size_t size_;
+  size_t size_{0};
 
   //! True if the source image contains a preview image of given type
-  bool valid_;
+  bool valid_{false};
 };
 
 //! Loader for native previews
@@ -163,7 +166,7 @@ class LoaderExifJpeg : public Loader {
   static const Param param_[];
 
   //! Offset value
-  size_t offset_;
+  size_t offset_{0};
 };
 
 //! Function to create new LoaderExifJpeg
@@ -280,7 +283,8 @@ const Loader::LoaderList Loader::loaderList_[] = {
     {nullptr, createLoaderExifJpeg, 2},      {nullptr, createLoaderExifJpeg, 3},
     {nullptr, createLoaderExifJpeg, 4},      {nullptr, createLoaderExifJpeg, 5},
     {nullptr, createLoaderExifJpeg, 6},      {"image/x-canon-cr2", createLoaderExifJpeg, 7},
-    {nullptr, createLoaderExifJpeg, 8},      {nullptr, createLoaderXmpJpeg, 0}};
+    {nullptr, createLoaderExifJpeg, 8},      {nullptr, createLoaderXmpJpeg, 0},
+};
 
 const LoaderExifJpeg::Param LoaderExifJpeg::param_[] = {
     {"Exif.Image.JPEGInterchangeFormat", "Exif.Image.JPEGInterchangeFormatLength", nullptr},            // 0
@@ -321,31 +325,25 @@ const LoaderTiff::Param LoaderTiff::param_[] = {
 };
 
 Loader::UniquePtr Loader::create(PreviewId id, const Image& image) {
+  Loader::UniquePtr loader;
   if (id < 0 || id >= Loader::getNumLoaders())
-    return nullptr;
+    return loader;
 
   if (loaderList_[id].imageMimeType_ && std::string(loaderList_[id].imageMimeType_) != image.mimeType())
-    return nullptr;
+    return loader;
 
-  auto loader = loaderList_[id].create_(id, image, loaderList_[id].parIdx_);
-
-  if (loader && !loader->valid())
-    loader.reset();
+  loader = loaderList_[id].create_(id, image, loaderList_[id].parIdx_);
+  if (!loader->valid())
+    loader = nullptr;
 
   return loader;
 }
 
-Loader::Loader(PreviewId id, const Image& image) :
-    id_(id), image_(image), width_(0), height_(0), size_(0), valid_(false) {
+Loader::Loader(PreviewId id, const Image& image) : id_(id), image_(image) {
 }
 
 PreviewProperties Loader::getProperties() const {
-  PreviewProperties prop;
-  prop.id_ = id_;
-  prop.size_ = size_;
-  prop.width_ = width_;
-  prop.height_ = height_;
-  return prop;
+  return {"", "", size_, width_, height_, id_};
 }
 
 PreviewId Loader::getNumLoaders() {
@@ -353,7 +351,7 @@ PreviewId Loader::getNumLoaders() {
 }
 
 LoaderNative::LoaderNative(PreviewId id, const Image& image, int parIdx) : Loader(id, image) {
-  if (!(0 <= parIdx && static_cast<size_t>(parIdx) < image.nativePreviews().size()))
+  if (0 > parIdx || static_cast<size_t>(parIdx) >= image.nativePreviews().size())
     return;
   nativePreview_ = image.nativePreviews()[parIdx];
   width_ = nativePreview_.width_;
@@ -427,7 +425,7 @@ DataBuf LoaderNative::getData() const {
     }
     return {record + sizeHdr + 28, sizeData - 28};
   }
-  throw Error(ErrorCode::kerErrorMessage, "Invalid native preview filter: " + nativePreview_.filter_);
+  throw Error(ErrorCode::kerErrorMessage, "Invalid native preview filter: ", nativePreview_.filter_);
 }
 
 bool LoaderNative::readDimensions() {
@@ -457,7 +455,7 @@ bool LoaderNative::readDimensions() {
   return true;
 }
 
-LoaderExifJpeg::LoaderExifJpeg(PreviewId id, const Image& image, int parIdx) : Loader(id, image), offset_(0) {
+LoaderExifJpeg::LoaderExifJpeg(PreviewId id, const Image& image, int parIdx) : Loader(id, image) {
   const ExifData& exifData = image_.exifData();
   auto pos = exifData.findKey(ExifKey(param_[parIdx].offsetKey_));
   if (pos != exifData.end() && pos->count() > 0) {
@@ -546,8 +544,7 @@ bool LoaderExifJpeg::readDimensions() {
 
 LoaderExifDataJpeg::LoaderExifDataJpeg(PreviewId id, const Image& image, int parIdx) :
     Loader(id, image), dataKey_(param_[parIdx].dataKey_) {
-  auto pos = image_.exifData().findKey(dataKey_);
-  if (pos != image_.exifData().end()) {
+  if (auto pos = image_.exifData().findKey(dataKey_); pos != image_.exifData().end()) {
     size_ = pos->sizeDataArea();  // indirect data
     if (size_ == 0 && pos->typeId() == undefined)
       size_ = pos->size();  // direct data
@@ -571,12 +568,13 @@ PreviewProperties LoaderExifDataJpeg::getProperties() const {
 }
 
 DataBuf LoaderExifDataJpeg::getData() const {
-  if (!valid())
-    return {};
+  DataBuf buf;
 
-  auto pos = image_.exifData().findKey(dataKey_);
-  if (pos != image_.exifData().end()) {
-    DataBuf buf = pos->dataArea();  // indirect data
+  if (!valid())
+    return buf;
+
+  if (auto pos = image_.exifData().findKey(dataKey_); pos != image_.exifData().end()) {
+    buf = pos->dataArea();  // indirect data
 
     if (buf.empty()) {  // direct data
       buf = DataBuf(pos->size());
@@ -587,7 +585,7 @@ DataBuf LoaderExifDataJpeg::getData() const {
     return buf;
   }
 
-  return {};
+  return buf;
 }
 
 bool LoaderExifDataJpeg::readDimensions() {
@@ -698,13 +696,13 @@ DataBuf LoaderTiff::getData() const {
                          consistent result for all previews, including JPEG
       */
       uint16_t tag = pos.tag();
-      if (tag != 0x00fe && tag != 0x00ff && Internal::isTiffImageTag(tag, Internal::ifd0Id)) {
+      if (tag != 0x00fe && tag != 0x00ff && Internal::isTiffImageTag(tag, IfdId::ifd0Id)) {
         preview.add(ExifKey(tag, "Image"), &pos.value());
       }
     }
   }
 
-  Value& dataValue = const_cast<Value&>(preview["Exif.Image." + offsetTag_].value());
+  auto& dataValue = const_cast<Value&>(preview["Exif.Image." + offsetTag_].value());
 
   if (dataValue.sizeDataArea() == 0) {
     // image data are not available via exifData, read them from image_.io()
@@ -728,7 +726,7 @@ DataBuf LoaderTiff::getData() const {
           dataValue.setDataArea(base + offset, size);
       } else {
         // FIXME: the buffer is probably copied twice, it should be optimized
-        enforce(size_ <= io.size(), ErrorCode::kerCorruptedMetadata);
+        Internal::enforce(size_ <= io.size(), ErrorCode::kerCorruptedMetadata);
         DataBuf buf(size_);
         uint32_t idxBuf = 0;
         for (size_t i = 0; i < sizes.count(); i++) {
@@ -739,7 +737,7 @@ DataBuf LoaderTiff::getData() const {
           // see the constructor of LoaderTiff
           // But e.g in malicious files some of these values could be negative
           // That's why we check again for each step here to really make sure we don't overstep
-          enforce(Safe::add(idxBuf, size) <= size_, ErrorCode::kerCorruptedMetadata);
+          Internal::enforce(Safe::add(idxBuf, size) <= size_, ErrorCode::kerCorruptedMetadata);
           if (size != 0 && Safe::add(offset, size) <= static_cast<uint32_t>(io.size())) {
             std::copy_n(base + offset, size, buf.begin() + idxBuf);
           }
@@ -859,34 +857,27 @@ DataBuf decodeHex(const byte* src, size_t srcSize) {
 const char encodeBase64Table[64 + 1] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
 DataBuf decodeBase64(const std::string& src) {
-  const size_t srcSize = src.size();
-
+  DataBuf dest;
   // create decoding table
   unsigned long invalid = 64;
-  std::array<unsigned long, 256> decodeBase64Table;
-  decodeBase64Table.fill(invalid);
+  auto decodeBase64Table = std::vector<unsigned long>(256, invalid);
   for (unsigned long i = 0; i < 64; i++)
     decodeBase64Table[static_cast<unsigned char>(encodeBase64Table[i])] = i;
 
   // calculate dest size
-  unsigned long validSrcSize = 0;
-  for (unsigned long srcPos = 0; srcPos < srcSize; srcPos++) {
-    if (decodeBase64Table[static_cast<unsigned char>(src[srcPos])] != invalid)
-      validSrcSize++;
-  }
+  auto validSrcSize = static_cast<unsigned long>(
+      std::count_if(src.begin(), src.end(), [&](unsigned char c) { return decodeBase64Table.at(c) != invalid; }));
   if (validSrcSize > ULONG_MAX / 3)
-    return {};  // avoid integer overflow
+    return dest;  // avoid integer overflow
   const unsigned long destSize = (validSrcSize * 3) / 4;
 
   // allocate dest buffer
-  if (destSize > LONG_MAX)
-    return {};  // avoid integer overflow
-  DataBuf dest(destSize);
+  dest = DataBuf(destSize);
 
   // decode
   for (unsigned long srcPos = 0, destPos = 0; destPos < destSize;) {
     unsigned long buffer = 0;
-    for (int bufferPos = 3; bufferPos >= 0 && srcPos < srcSize; srcPos++) {
+    for (int bufferPos = 3; bufferPos >= 0 && srcPos < src.size(); srcPos++) {
       unsigned long srcValue = decodeBase64Table[static_cast<unsigned char>(src[srcPos])];
       if (srcValue == invalid)
         continue;
@@ -943,19 +934,19 @@ DataBuf decodeAi7Thumbnail(const DataBuf& src) {
 }
 
 DataBuf makePnm(size_t width, size_t height, const DataBuf& rgb) {
-  const size_t expectedSize = width * height * 3UL;
-  if (rgb.size() != expectedSize) {
+  DataBuf dest;
+  if (size_t expectedSize = width * height * 3UL; rgb.size() != expectedSize) {
 #ifndef SUPPRESS_WARNINGS
     EXV_WARNING << "Invalid size of preview data. Expected " << expectedSize << " bytes, got " << rgb.size()
                 << " bytes.\n";
 #endif
-    return {};
+    return dest;
   }
 
-  const std::string header = "P6\n" + toString(width) + " " + toString(height) + "\n255\n";
+  const std::string header = "P6\n" + std::to_string(width) + " " + std::to_string(height) + "\n255\n";
   const auto headerBytes = reinterpret_cast<const byte*>(header.data());
 
-  DataBuf dest(header.size() + rgb.size());
+  dest = DataBuf(header.size() + rgb.size());
   std::copy_n(headerBytes, header.size(), dest.begin());
   std::copy_n(rgb.c_data(), rgb.size(), dest.begin() + header.size());
   return dest;
@@ -981,12 +972,14 @@ PreviewImage& PreviewImage::operator=(const PreviewImage& rhs) {
   return *this;
 }
 
+#ifdef EXV_ENABLE_FILESYSTEM
 size_t PreviewImage::writeFile(const std::string& path) const {
   std::string name = path + extension();
   // Todo: Creating a DataBuf here unnecessarily copies the memory
   DataBuf buf(pData(), size());
   return Exiv2::writeFile(buf, name);
 }
+#endif
 
 DataBuf PreviewImage::copy() const {
   return {pData(), size()};
@@ -1032,7 +1025,7 @@ PreviewPropertiesList PreviewManager::getPreviewProperties() const {
       PreviewProperties props = loader->getProperties();
       DataBuf buf = loader->getData();  // #16 getPreviewImage()
       props.size_ = buf.size();         //     update the size
-      list.push_back(props);
+      list.push_back(std::move(props));
     }
   }
   std::sort(list.begin(), list.end(), cmpPreviewProperties);

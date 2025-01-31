@@ -5,6 +5,7 @@
 
 // *****************************************************************************
 // included header files
+#include "error.hpp"
 #include "tags.hpp"
 
 // *****************************************************************************
@@ -14,185 +15,8 @@ namespace Exiv2::Internal {
 // *****************************************************************************
 // class definitions
 
-//! Type to specify the IFD to which a metadata belongs
-enum IfdId {
-  ifdIdNotSet,
-  ifd0Id,
-  ifd1Id,
-  ifd2Id,
-  ifd3Id,
-  exifId,
-  gpsId,
-  iopId,
-  mpfId,
-  subImage1Id,
-  subImage2Id,
-  subImage3Id,
-  subImage4Id,
-  subImage5Id,
-  subImage6Id,
-  subImage7Id,
-  subImage8Id,
-  subImage9Id,
-  subThumb1Id,
-  panaRawId,
-  mnId,
-  canonId,
-  canonAfCId,
-  canonAfMiAdjId,
-  canonAmId,
-  canonAsId,
-  canonCbId,
-  canonCiId,
-  canonCsId,
-  canonFilId,
-  canonFlId,
-  canonHdrId,
-  canonLeId,
-  canonMeId,
-  canonMoID,
-  canonMvId,
-  canonRawBId,
-  canonSiId,
-  canonCfId,
-  canonContrastId,
-  canonFcd1Id,
-  canonFcd2Id,
-  canonFcd3Id,
-  canonLiOpId,
-  canonMyColorID,
-  canonPiId,
-  canonPaId,
-  canonTiId,
-  canonFiId,
-  canonPrId,
-  canonPreID,
-  canonVigCorId,
-  canonVigCor2Id,
-  canonWbId,
-  casioId,
-  casio2Id,
-  fujiId,
-  minoltaId,
-  minoltaCs5DId,
-  minoltaCs7DId,
-  minoltaCsOldId,
-  minoltaCsNewId,
-  nikon1Id,
-  nikon2Id,
-  nikon3Id,
-  nikonPvId,
-  nikonVrId,
-  nikonPcId,
-  nikonWtId,
-  nikonIiId,
-  nikonAfId,
-  nikonAf21Id,
-  nikonAf22Id,
-  nikonAFTId,
-  nikonFiId,
-  nikonMeId,
-  nikonFl1Id,
-  nikonFl2Id,
-  nikonFl3Id,
-  nikonFl7Id,
-  nikonSi1Id,
-  nikonSi2Id,
-  nikonSi3Id,
-  nikonSi4Id,
-  nikonSi5Id,
-  nikonSi6Id,
-  nikonLd1Id,
-  nikonLd2Id,
-  nikonLd3Id,
-  nikonLd4Id,
-  nikonCb1Id,
-  nikonCb2Id,
-  nikonCb2aId,
-  nikonCb2bId,
-  nikonCb3Id,
-  nikonCb4Id,
-  olympusId,
-  olympus2Id,
-  olympusCsId,
-  olympusEqId,
-  olympusRdId,
-  olympusRd2Id,
-  olympusIpId,
-  olympusFiId,
-  olympusFe1Id,
-  olympusFe2Id,
-  olympusFe3Id,
-  olympusFe4Id,
-  olympusFe5Id,
-  olympusFe6Id,
-  olympusFe7Id,
-  olympusFe8Id,
-  olympusFe9Id,
-  olympusRiId,
-  panasonicId,
-  pentaxId,
-  pentaxDngId,
-  samsung2Id,
-  samsungPvId,
-  samsungPwId,
-  sigmaId,
-  sony1Id,
-  sony2Id,
-  sonyMltId,
-  sony1CsId,
-  sony1Cs2Id,
-  sony2CsId,
-  sony2Cs2Id,
-  sony2FpId,
-  sonyMisc1Id,
-  sonyMisc2bId,
-  sonyMisc3cId,
-  sonySInfo1Id,
-  sony2010eId,
-  sony1MltCs7DId,
-  sony1MltCsOldId,
-  sony1MltCsNewId,
-  sony1MltCsA100Id,
-  tagInfoMvId,
-  lastId,
-  ignoreId = lastId
-};
-
-/*!
-  @brief Section identifiers to logically group tags. A section consists
-         of nothing more than a name, based on the Exif standard.
- */
-enum SectionId {
-  sectionIdNotSet,
-  imgStruct,     // 4.6.4 A
-  recOffset,     // 4.6.4 B
-  imgCharacter,  // 4.6.4 C
-  otherTags,     // 4.6.4 D
-  exifFormat,    // 4.6.3
-  exifVersion,   // 4.6.5 A
-  imgConfig,     // 4.6.5 C
-  userInfo,      // 4.6.5 D
-  relatedFile,   // 4.6.5 E
-  dateTime,      // 4.6.5 F
-  captureCond,   // 4.6.5 G
-  gpsTags,       // 4.6.6
-  iopTags,       // 4.6.7
-  mpfTags,
-  makerTags,  // MakerNote
-  dngTags,    // DNG Spec
-  panaRaw,
-  tiffEp,  // TIFF-EP Spec
-  tiffPm6,
-  adobeOpi,
-  lastSectionId
-};
-
 //! The details of a section.
 struct SectionInfo {
-  constexpr SectionInfo(SectionId sectionId, const char* name, const char* desc) :
-      sectionId_(sectionId), name_(name), desc_(desc) {
-  }
   SectionId sectionId_;  //!< Section id
   const char* name_;     //!< Section name (one word)
   const char* desc_;     //!< Section description
@@ -213,10 +37,33 @@ struct TagDetails {
 };  // struct TagDetails
 
 /*!
+  @brief Helper structure for lookup tables for translations of string
+         tag values to human readable labels.
+ */
+struct StringTagDetails {
+  const char* val_;    //!< Tag value
+  const char* label_;  //!< Translation of the tag value
+
+  //! Comparison operator for use with the find template
+  bool operator==(const std::string& key) const {
+    return (key == val_);
+  }
+};  // struct TagDetails
+
+/*!
   @brief Helper structure for lookup tables for translations of bitmask
          values to human readable labels.
  */
 using TagDetailsBitmask = std::pair<uint32_t, const char*>;
+
+/*!
+  @brief Helper structure for lookup tables for translations of lists of
+         individual bit values to human readable labels.
+         Required to be sorted by the first element (e.g.,
+         {{0, N_("Center")}, {1, N_("Top")}, {2, N_("Upper-right")},
+         {3, N_("Right")}})
+ */
+using TagDetailsBitlistSorted = std::pair<uint32_t, const char*>;
 
 /*!
   @brief Helper structure for lookup tables for translations of controlled
@@ -237,13 +84,94 @@ struct TagVocabulary {
 };  // struct TagDetails
 
 /*!
+  @brief Generic pretty-print function to translate a full string value to a description
+         by looking up a reference table.
+ */
+template <size_t N, const StringTagDetails (&array)[N]>
+std::ostream& printTagString(std::ostream& os, const std::string& value, const ExifData*) {
+  if (auto td = Exiv2::find(array, value)) {
+    os << exvGettext(td->label_);
+  } else {
+    os << "(" << value << ")";
+  }
+  return os;
+}
+
+/*!
+  @brief Generic pretty-print function to translate the full string value in Value, to a description
+         by looking up a reference table.
+ */
+template <size_t N, const StringTagDetails (&array)[N]>
+std::ostream& printTagString(std::ostream& os, const Value& value, const ExifData* data) {
+  return printTagString<N, array>(os, value.toString(0), data);
+}
+
+//! Shortcut for the printStringTag template which requires typing the array name only once.
+#define EXV_PRINT_STRING_TAG_1(array) printTagString<std::size(array), array>
+
+/*!
+  @brief Generic pretty-print function to translate the first 2 values in Value as a string,
+         to a description by looking up a reference table.
+ */
+template <size_t N, const StringTagDetails (&array)[N]>
+std::ostream& printTagString2(std::ostream& os, const Value& value, const ExifData* data) {
+  if (value.count() < 2)
+    return os << "(" << value << ")";
+  std::string temp = value.toString(0) + " " + value.toString(1);
+  return printTagString<N, array>(os, temp, data);
+}
+
+//! Shortcut for the printTagString2 template which requires typing the array name only once.
+#define EXV_PRINT_STRING_TAG_2(array) printTagString2<std::size(array), array>
+
+/*!
+  @brief Generic pretty-print function to translate the first 4 values in Value as a string,
+         to a description by looking up a reference table.
+ */
+template <size_t N, const StringTagDetails (&array)[N]>
+std::ostream& printTagString4(std::ostream& os, const Value& value, const ExifData* data) {
+  if (value.count() < 4)
+    return os << "(" << value << ")";
+  std::string temp = value.toString(0) + " " + value.toString(1) + " " + value.toString(2) + " " + value.toString(3);
+  return printTagString<N, array>(os, temp, data);
+}
+
+//! Shortcut for the printTagString4 template which requires typing the array name only once.
+#define EXV_PRINT_STRING_TAG_4(array) printTagString4<std::size(array), array>
+
+/*!
+  @brief Generic pretty-print function to translate a long value to a description
+         by looking up a reference table. Unknown values are passed through without error.
+ */
+template <size_t N, const TagDetails (&array)[N]>
+std::ostream& printTagNoError(std::ostream& os, const int64_t value, const ExifData*) {
+  if (auto td = Exiv2::find(array, value)) {
+    os << exvGettext(td->label_);
+  } else {
+    os << value;
+  }
+  return os;
+}
+
+/*!
+  @brief Generic pretty-print function to translate the full string value in Value, to a description
+         by looking up a reference table.
+ */
+template <size_t N, const TagDetails (&array)[N]>
+std::ostream& printTagNoError(std::ostream& os, const Value& value, const ExifData* data) {
+  return printTagNoError<N, array>(os, value.toInt64(), data);
+}
+
+//! Shortcut for the printStringTag template which requires typing the array name only once.
+#define EXV_PRINT_TAG_NO_ERROR(array) printTagNoError<std::size(array), array>
+
+/*!
   @brief Generic pretty-print function to translate a long value to a description
          by looking up a reference table.
  */
-template <int N, const TagDetails (&array)[N]>
+template <size_t N, const TagDetails (&array)[N]>
 std::ostream& printTag(std::ostream& os, const int64_t value, const ExifData*) {
-  const TagDetails* td = find(array, value);
-  if (td) {
+  if (auto td = Exiv2::find(array, value)) {
     os << exvGettext(td->label_);
   } else {
     os << "(" << value << ")";
@@ -255,7 +183,7 @@ std::ostream& printTag(std::ostream& os, const int64_t value, const ExifData*) {
   @brief Generic pretty-print function to translate the first long value in Value, to a description
          by looking up a reference table.
  */
-template <int N, const TagDetails (&array)[N]>
+template <size_t N, const TagDetails (&array)[N]>
 std::ostream& printTag(std::ostream& os, const Value& value, const ExifData* data) {
   return printTag<N, array>(os, value.toInt64(), data);
 }
@@ -267,7 +195,7 @@ std::ostream& printTag(std::ostream& os, const Value& value, const ExifData* dat
   @brief Generic print function to translate a long value to a description
          by looking up bitmasks in a reference table.
  */
-template <int N, const TagDetailsBitmask (&array)[N]>
+template <size_t N, const TagDetailsBitmask (&array)[N]>
 std::ostream& printTagBitmask(std::ostream& os, const Value& value, const ExifData*) {
   const auto val = value.toUint32();
   if (val == 0 && N > 0) {
@@ -276,8 +204,7 @@ std::ostream& printTagBitmask(std::ostream& os, const Value& value, const ExifDa
       return os << exvGettext(label);
   }
   bool sep = false;
-  for (int i = 0; i < N; ++i) {
-    // *& acrobatics is a workaround for a MSVC 7.1 bug
+  for (size_t i = 0; i < N; ++i) {
     auto [mask, label] = *(array + i);
 
     if (val & mask) {
@@ -296,13 +223,73 @@ std::ostream& printTagBitmask(std::ostream& os, const Value& value, const ExifDa
 #define EXV_PRINT_TAG_BITMASK(array) printTagBitmask<std::size(array), array>
 
 /*!
+  @brief Generic print function to translate the bits in the values
+         by looking up the indices in a reference table. The function
+         processes the values using little endian format. Any bits not
+         found in the array are also output.
+ */
+template <size_t N, const TagDetailsBitlistSorted (&array)[N]>
+std::ostream& printTagBitlistAllLE(std::ostream& os, const Value& value, const ExifData*) {
+  if constexpr (N == 0)
+    throw Error(ErrorCode::kerErrorMessage, "Passed zero length TagDetailsBitlistSorted");
+
+  uint32_t vN = 0;
+  uint32_t currentVNBit = 0;
+  size_t lastArrayPos = 0;  // Prevents unneeded searching of array
+  constexpr auto maxArrayBit = (array + N - 1)->first;
+  auto allVNZero = true;
+  auto useSep = false;
+
+  // For each value
+  for (size_t i = 0; i < value.count(); i++) {
+    vN = value.toUint32(i);
+    if (vN == 0) {  // If all bits zero, then nothing to process
+      currentVNBit += 8;
+      continue;
+    }
+    allVNZero = false;
+    // Cycle through every bit in that byte
+    for (auto j = 0; j < 8; j++, currentVNBit++) {
+      if ((vN >> j & 0x01) == 0) {  // If bit not set, then nothing to process
+        continue;
+      }
+      if (currentVNBit > maxArrayBit) {  // If beyond array values, output unknown index
+        os << ", [" << currentVNBit << "]";
+        continue;
+      }
+
+      // Check to see if the numbered bit is found in the array
+      for (size_t k = lastArrayPos; k < N; ++k) {
+        auto [bit, label] = *(array + k);
+
+        if (currentVNBit == bit) {
+          lastArrayPos = k;
+          if (useSep) {
+            os << ", " << exvGettext(label);
+          } else {
+            os << exvGettext(label);
+            useSep = true;
+          }
+          break;
+        }
+      }
+    }
+  }
+  if (allVNZero)
+    os << exvGettext("None");
+  return os;
+}
+
+//! Shortcut for the printTagBitlistAllLE template which requires typing the array name only once.
+#define EXV_PRINT_TAG_BITLIST_ALL_LE(array) printTagBitlistAllLE<std::size(array), array>
+
+/*!
   @brief Generic pretty-print function to translate a controlled vocabulary value (string)
          to a description by looking up a reference table.
  */
-template <int N, const TagVocabulary (&array)[N]>
+template <size_t N, const TagVocabulary (&array)[N]>
 std::ostream& printTagVocabulary(std::ostream& os, const Value& value, const ExifData*) {
-  const TagVocabulary* td = find(array, value.toString());
-  if (td) {
+  if (auto td = Exiv2::find(array, value.toString())) {
     os << exvGettext(td->label_);
   } else {
     os << "(" << value << ")";
@@ -313,7 +300,7 @@ std::ostream& printTagVocabulary(std::ostream& os, const Value& value, const Exi
 //! Shortcut for the printTagVocabulary template which requires typing the array name only once.
 #define EXV_PRINT_VOCABULARY(array) printTagVocabulary<std::size(array), array>
 
-template <int N, const TagVocabulary (&array)[N]>
+template <size_t N, const TagVocabulary (&array)[N]>
 std::ostream& printTagVocabularyMulti(std::ostream& os, const Value& value, const ExifData*) {
   if (value.count() == 0) {
     os << "(" << value << ")";
@@ -323,7 +310,7 @@ std::ostream& printTagVocabularyMulti(std::ostream& os, const Value& value, cons
   for (size_t i = 0; i < value.count(); i++) {
     if (i != 0)
       os << ", ";
-    const TagVocabulary* td = find(array, value.toString(i));
+    auto td = Exiv2::find(array, value.toString(i));
     if (td) {
       os << exvGettext(td->label_);
     } else {
@@ -399,6 +386,8 @@ std::ostream& printDegrees(std::ostream& os, const Value& value, const ExifData*
 std::ostream& printUcs2(std::ostream& os, const Value& value, const ExifData*);
 //! Print function for Exif units
 std::ostream& printExifUnit(std::ostream& os, const Value& value, const ExifData*);
+//! Print function for lens specification
+std::ostream& printLensSpecification(std::ostream& os, const Value& value, const ExifData*);
 //! Print GPS version
 std::ostream& print0x0000(std::ostream& os, const Value& value, const ExifData*);
 //! Print GPS altitude ref

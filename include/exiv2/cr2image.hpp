@@ -56,12 +56,12 @@ class EXIV2API Cr2Image : public Image {
           not valid (does not look like data of the specific image type).
     @warning This function is not thread safe and intended for exiv2 -pS for debugging.
    */
-  void printStructure(std::ostream& out, PrintStructureOption option, int depth) override;
+  void printStructure(std::ostream& out, PrintStructureOption option, size_t depth) override;
   /*!
     @brief Not supported. CR2 format does not contain a comment.
         Calling this function will throw an Error(ErrorCode::kerInvalidSettingForImage).
    */
-  void setComment(std::string_view comment) override;
+  void setComment(const std::string&) override;
   //@}
 
   //! @name Accessors
@@ -70,16 +70,6 @@ class EXIV2API Cr2Image : public Image {
   [[nodiscard]] uint32_t pixelWidth() const override;
   [[nodiscard]] uint32_t pixelHeight() const override;
   //@}
-
-  ~Cr2Image() override = default;
-  //! @name NOT implemented
-  //@{
-  //! Copy constructor
-  Cr2Image(const Cr2Image&) = delete;
-  //! Assignment operator
-  Cr2Image& operator=(const Cr2Image&) = delete;
-  //@}
-
 };  // class Cr2Image
 
 /*!
@@ -99,8 +89,8 @@ class EXIV2API Cr2Parser {
     @brief Encode metadata from the provided metadata to CR2 format.
            See TiffParser::encode().
   */
-  static WriteMethod encode(BasicIo& io, const byte* pData, size_t size, ByteOrder byteOrder, const ExifData& exifData,
-                            const IptcData& iptcData, const XmpData& xmpData);
+  static WriteMethod encode(BasicIo& io, const byte* pData, size_t size, ByteOrder byteOrder, ExifData& exifData,
+                            IptcData& iptcData, XmpData& xmpData);
 
 };  // class Cr2Parser
 

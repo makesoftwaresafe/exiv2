@@ -37,11 +37,11 @@ enum class MetadataId : uint32_t {
 };
 
 inline MetadataId operator&(MetadataId x, MetadataId y) {
-  return (MetadataId)(uint32_t(x) & uint32_t(y));
+  return static_cast<MetadataId>(static_cast<uint32_t>(x) & static_cast<uint32_t>(y));
 }
 
 inline MetadataId operator|(MetadataId x, MetadataId y) {
-  return (MetadataId)(uint32_t(x) | uint32_t(y));
+  return static_cast<MetadataId>(static_cast<uint32_t>(x) | static_cast<uint32_t>(y));
 }
 
 inline MetadataId& operator|=(MetadataId& x, MetadataId y) {
@@ -62,8 +62,6 @@ struct ModifyCmd {
 };
 //! Container for modification commands
 using ModifyCmds = std::vector<ModifyCmd>;
-//! Structure to link command identifiers to strings
-using CmdIdAndString = std::pair<CmdId, std::string>;
 /*!
   @brief Implements the command line handling for the program.
 
@@ -122,7 +120,7 @@ class Params : public Util::Getopt {
   static Params& instance();
 
   //! Prevent copy-construction: not implemented.
-  ~Params() = default;
+  ~Params() override = default;
   Params(const Params&) = delete;
   Params& operator=(const Params&) = delete;
 
@@ -151,7 +149,8 @@ class Params : public Util::Getopt {
     prValue = 256,
     prTrans = 512,
     prHex = 1024,
-    prSet = 2048
+    prSet = 2048,
+    prDesc = 4096
   };
 
   //! Enumerates common targets, bitmap
@@ -208,21 +207,21 @@ class Params : public Util::Getopt {
   int action_{0};
   CommonTarget target_;  //!< What common target to process.
 
-  int64_t adjustment_{0};          //!< Adjustment in seconds.
-  YodAdjust yodAdjust_[3];         //!< Year, month and day adjustment info.
-  std::string format_;             //!< Filename format (-r option arg).
-  bool formatSet_{false};          //!< Whether the format is set with -r
-  CmdFiles cmdFiles_;              //!< Names of the modification command files
-  CmdLines cmdLines_;              //!< Commands from the command line
-  ModifyCmds modifyCmds_;          //!< Parsed modification commands
-  std::string jpegComment_;        //!< Jpeg comment to set in the image
-  std::string directory_;          //!< Location for files to extract/insert
-  std::string suffix_;             //!< File extension of the file to insert
-  Files files_;                    //!< List of non-option arguments.
-  PreviewNumbers previewNumbers_;  //!< List of preview numbers
-  std::vector<std::regex> greps_;  //!< List of keys to 'grep' from the metadata
-  Keys keys_;                      //!< List of keys to match from the metadata
-  std::string charset_;            //!< Charset to use for UNICODE Exif user comment
+  int64_t adjustment_{0};               //!< Adjustment in seconds.
+  std::array<YodAdjust, 3> yodAdjust_;  //!< Year, month and day adjustment info.
+  std::string format_;                  //!< Filename format (-r option arg).
+  bool formatSet_{false};               //!< Whether the format is set with -r
+  CmdFiles cmdFiles_;                   //!< Names of the modification command files
+  CmdLines cmdLines_;                   //!< Commands from the command line
+  ModifyCmds modifyCmds_;               //!< Parsed modification commands
+  std::string jpegComment_;             //!< Jpeg comment to set in the image
+  std::string directory_;               //!< Location for files to extract/insert
+  std::string suffix_;                  //!< File extension of the file to insert
+  Files files_;                         //!< List of non-option arguments.
+  PreviewNumbers previewNumbers_;       //!< List of preview numbers
+  std::vector<std::regex> greps_;       //!< List of keys to 'grep' from the metadata
+  Keys keys_;                           //!< List of keys to match from the metadata
+  std::string charset_;                 //!< Charset to use for UNICODE Exif user comment
 
   Exiv2::DataBuf stdinBuf;  //!< DataBuf with the binary bytes from stdin
 
@@ -285,7 +284,7 @@ class Params : public Util::Getopt {
 };  // class Params
 
 inline Params::CommonTarget operator|(Params::CommonTarget x, Params::CommonTarget y) {
-  return (Params::CommonTarget)(uint32_t(x) | uint32_t(y));
+  return static_cast<Params::CommonTarget>(static_cast<uint32_t>(x) | static_cast<uint32_t>(y));
 }
 
 inline Params::CommonTarget& operator|=(Params::CommonTarget& x, Params::CommonTarget y) {
@@ -293,7 +292,7 @@ inline Params::CommonTarget& operator|=(Params::CommonTarget& x, Params::CommonT
 }
 
 inline Params::PrintItem operator|(Params::PrintItem x, Params::PrintItem y) {
-  return (Params::PrintItem)(uint32_t(x) | uint32_t(y));
+  return static_cast<Params::PrintItem>(static_cast<uint32_t>(x) | static_cast<uint32_t>(y));
 }
 
 inline Params::PrintItem& operator|=(Params::PrintItem& x, Params::PrintItem y) {

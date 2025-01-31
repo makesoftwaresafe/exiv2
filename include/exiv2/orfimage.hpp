@@ -21,15 +21,6 @@ namespace Exiv2 {
  */
 class EXIV2API OrfImage : public TiffImage {
  public:
-  ~OrfImage() override = default;
-  //! @name NOT Implemented
-  //@{
-  //! Copy constructor
-  OrfImage(const OrfImage&) = delete;
-  //! Assignment operator
-  OrfImage& operator=(const OrfImage&) = delete;
-  //@}
-
   //! @name Creators
   //@{
   /*!
@@ -52,14 +43,14 @@ class EXIV2API OrfImage : public TiffImage {
 
   //! @name Manipulators
   //@{
-  void printStructure(std::ostream& out, PrintStructureOption option, int depth) override;
+  void printStructure(std::ostream& out, PrintStructureOption option, size_t depth) override;
   void readMetadata() override;
   void writeMetadata() override;
   /*!
     @brief Not supported. ORF format does not contain a comment.
         Calling this function will throw an Error(ErrorCode::kerInvalidSettingForImage).
    */
-  void setComment(std::string_view comment) override;
+  void setComment(const std::string&) override;
   //@}
 
   //! @name Accessors
@@ -87,8 +78,8 @@ class EXIV2API OrfParser {
     @brief Encode metadata from the provided metadata to ORF format.
            See TiffParser::encode().
   */
-  static WriteMethod encode(BasicIo& io, const byte* pData, size_t size, ByteOrder byteOrder, const ExifData& exifData,
-                            const IptcData& iptcData, const XmpData& xmpData);
+  static WriteMethod encode(BasicIo& io, const byte* pData, size_t size, ByteOrder byteOrder, ExifData& exifData,
+                            IptcData& iptcData, XmpData& xmpData);
 };  // class OrfParser
 
 // *****************************************************************************

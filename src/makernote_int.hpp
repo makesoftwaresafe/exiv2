@@ -1,14 +1,12 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-#ifndef MAKERNOTE_INT_HPP_
-#define MAKERNOTE_INT_HPP_
+#ifndef EXIV2_MAKERNOTE_INT_HPP
+#define EXIV2_MAKERNOTE_INT_HPP
 
 // *****************************************************************************
 // included header files
 #include "tags_int.hpp"
 #include "types.hpp"
-
-#include <functional>
 
 // namespace extensions
 namespace Exiv2::Internal {
@@ -30,10 +28,10 @@ std::string readExiv2Config(const std::string& section, const std::string& value
 // class definitions
 
 //! Type for a pointer to a function creating a makernote (image)
-using NewMnFct = std::function<TiffComponent*(uint16_t, IfdId, IfdId, const byte*, size_t, ByteOrder)>;
+using NewMnFct = TiffComponent* (*)(uint16_t, IfdId, IfdId, const byte*, size_t, ByteOrder);
 
 //! Type for a pointer to a function creating a makernote (group)
-using NewMnFct2 = std::function<TiffComponent*(uint16_t tag, IfdId group, IfdId mnGroup)>;
+using NewMnFct2 = TiffComponent* (*)(uint16_t tag, IfdId group, IfdId mnGroup);
 
 //! Makernote registry structure
 struct TiffMnRegistry {
@@ -87,8 +85,8 @@ class TiffMnCreator {
   TiffMnCreator& operator=(const TiffComponent&) = delete;
 
  private:
-  static const TiffMnRegistry registry_[];  //<! List of makernotes
-};                                          // class TiffMnCreator
+  static const TiffMnRegistry registry_[];  //!< List of makernotes
+};
 
 //! Makernote header interface. This class is used with TIFF makernotes.
 class MnHeader {
@@ -129,7 +127,7 @@ class MnHeader {
            to the start of the TIFF header. \em mnOffset is the offset
            to the makernote from the start of the TIFF header.
    */
-  [[nodiscard]] virtual uint32_t baseOffset(uint32_t mnOffset) const;
+  [[nodiscard]] virtual size_t baseOffset(size_t mnOffset) const;
   //@}
 
 };  // class MnHeader
@@ -141,8 +139,6 @@ class OlympusMnHeader : public MnHeader {
   //@{
   //! Default constructor
   OlympusMnHeader();
-  //! Virtual destructor.
-  ~OlympusMnHeader() override = default;
   //@}
   //! @name Manipulators
   //@{
@@ -170,8 +166,6 @@ class Olympus2MnHeader : public MnHeader {
   //@{
   //! Default constructor
   Olympus2MnHeader();
-  //! Virtual destructor.
-  ~Olympus2MnHeader() override = default;
   //@}
   //! @name Manipulators
   //@{
@@ -182,7 +176,7 @@ class Olympus2MnHeader : public MnHeader {
   [[nodiscard]] size_t size() const override;
   size_t write(IoWrapper& ioWrapper, ByteOrder byteOrder) const override;
   [[nodiscard]] size_t ifdOffset() const override;
-  [[nodiscard]] uint32_t baseOffset(uint32_t mnOffset) const override;
+  [[nodiscard]] size_t baseOffset(size_t mnOffset) const override;
   //@}
   //! Return the size of the makernote header signature
   static size_t sizeOfSignature();
@@ -200,8 +194,6 @@ class OMSystemMnHeader : public MnHeader {
   //@{
   //! Default constructor
   OMSystemMnHeader();
-  //! Virtual destructor.
-  ~OMSystemMnHeader() override = default;
   //@}
   //! @name Manipulators
   //@{
@@ -212,7 +204,7 @@ class OMSystemMnHeader : public MnHeader {
   [[nodiscard]] size_t size() const override;
   size_t write(IoWrapper& ioWrapper, ByteOrder byteOrder) const override;
   [[nodiscard]] size_t ifdOffset() const override;
-  [[nodiscard]] uint32_t baseOffset(uint32_t mnOffset) const override;
+  [[nodiscard]] size_t baseOffset(size_t mnOffset) const override;
   //@}
   //! Return the size of the makernote header signature
   static size_t sizeOfSignature();
@@ -230,8 +222,6 @@ class FujiMnHeader : public MnHeader {
   //@{
   //! Default constructor
   FujiMnHeader();
-  //! Virtual destructor.
-  ~FujiMnHeader() override = default;
   //@}
   //! @name Manipulators
   //@{
@@ -244,7 +234,7 @@ class FujiMnHeader : public MnHeader {
   size_t write(IoWrapper& ioWrapper, ByteOrder byteOrder) const override;
   [[nodiscard]] size_t ifdOffset() const override;
   [[nodiscard]] ByteOrder byteOrder() const override;
-  [[nodiscard]] uint32_t baseOffset(uint32_t mnOffset) const override;
+  [[nodiscard]] size_t baseOffset(size_t mnOffset) const override;
   //@}
   //! Return the size of the makernote header signature
   static size_t sizeOfSignature();
@@ -253,7 +243,7 @@ class FujiMnHeader : public MnHeader {
   DataBuf header_;                    //!< Data buffer for the makernote header
   static const byte signature_[];     //!< Fujifilm makernote header signature
   static const ByteOrder byteOrder_;  //!< Byteorder for makernote (always II)
-  uint32_t start_{0};                 //!< Start of the mn IFD rel. to mn start
+  size_t start_{0};                   //!< Start of the mn IFD rel. to mn start
 
 };  // class FujiMnHeader
 
@@ -264,8 +254,6 @@ class Nikon2MnHeader : public MnHeader {
   //@{
   //! Default constructor
   Nikon2MnHeader();
-  //! Virtual destructor.
-  ~Nikon2MnHeader() override = default;
   //@}
   //! @name Manipulators
   //@{
@@ -294,8 +282,6 @@ class Nikon3MnHeader : public MnHeader {
   //@{
   //! Default constructor
   Nikon3MnHeader();
-  //! Virtual destructor.
-  ~Nikon3MnHeader() override = default;
   //@}
   //! @name Manipulators
   //@{
@@ -308,7 +294,7 @@ class Nikon3MnHeader : public MnHeader {
   size_t write(IoWrapper& ioWrapper, ByteOrder byteOrder) const override;
   [[nodiscard]] size_t ifdOffset() const override;
   [[nodiscard]] ByteOrder byteOrder() const override;
-  [[nodiscard]] uint32_t baseOffset(uint32_t mnOffset) const override;
+  [[nodiscard]] size_t baseOffset(size_t mnOffset) const override;
   //@}
   //! Return the size of the makernote header signature
   static size_t sizeOfSignature();
@@ -328,8 +314,6 @@ class PanasonicMnHeader : public MnHeader {
   //@{
   //! Default constructor
   PanasonicMnHeader();
-  //! Virtual destructor.
-  ~PanasonicMnHeader() override = default;
   //@}
   //! @name Manipulators
   //@{
@@ -358,8 +342,6 @@ class PentaxDngMnHeader : public MnHeader {
   //@{
   //! Default constructor
   PentaxDngMnHeader();
-  //! Virtual destructor.
-  ~PentaxDngMnHeader() override = default;
   //@}
   //! @name Manipulators
   //@{
@@ -370,7 +352,7 @@ class PentaxDngMnHeader : public MnHeader {
   [[nodiscard]] size_t size() const override;
   size_t write(IoWrapper& ioWrapper, ByteOrder byteOrder) const override;
   [[nodiscard]] size_t ifdOffset() const override;
-  [[nodiscard]] uint32_t baseOffset(uint32_t mnOffset) const override;
+  [[nodiscard]] size_t baseOffset(size_t mnOffset) const override;
   //@}
   //! Return the size of the makernote header signature
   static size_t sizeOfSignature();
@@ -388,8 +370,6 @@ class PentaxMnHeader : public MnHeader {
   //@{
   //! Default constructor
   PentaxMnHeader();
-  //! Virtual destructor.
-  ~PentaxMnHeader() override = default;
   //@}
   //! @name Manipulators
   //@{
@@ -426,7 +406,7 @@ class SamsungMnHeader : public MnHeader {
   //@{
   [[nodiscard]] size_t size() const override;
   size_t write(IoWrapper& ioWrapper, ByteOrder byteOrder) const override;
-  [[nodiscard]] uint32_t baseOffset(uint32_t mnOffset) const override;
+  [[nodiscard]] size_t baseOffset(size_t mnOffset) const override;
   //@}
 
 };  // class SamsungMnHeader
@@ -438,8 +418,6 @@ class SigmaMnHeader : public MnHeader {
   //@{
   //! Default constructor
   SigmaMnHeader();
-  //! Virtual destructor.
-  ~SigmaMnHeader() override = default;
   //@}
   //! @name Manipulators
   //@{
@@ -469,8 +447,6 @@ class SonyMnHeader : public MnHeader {
   //@{
   //! Default constructor
   SonyMnHeader();
-  //! Virtual destructor.
-  ~SonyMnHeader() override = default;
   //@}
   //! @name Manipulators
   //@{
@@ -499,8 +475,6 @@ class Casio2MnHeader : public MnHeader {
   //@{
   //! Default constructor
   Casio2MnHeader();
-  //! Virtual destructor.
-  ~Casio2MnHeader() override = default;
   //@}
   //! @name Manipulators
   //@{
@@ -702,4 +676,4 @@ DataBuf nikonCrypt(uint16_t tag, const byte* pData, size_t size, TiffComponent* 
 
 }  // namespace Exiv2::Internal
 
-#endif  // #ifndef MAKERNOTE_INT_HPP_
+#endif  // EXIV2_MAKERNOTE_INT_HPP

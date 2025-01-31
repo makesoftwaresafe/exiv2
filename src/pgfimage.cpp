@@ -10,6 +10,7 @@
 #include "futils.hpp"
 #include "image.hpp"
 
+#include <bit>
 #include <iostream>
 
 // Signature from front of PGF file
@@ -28,12 +29,16 @@ const unsigned char pgfBlank[] = {
 
 namespace Exiv2 {
 static uint32_t byteSwap_(uint32_t value, bool bSwap) {
+#ifdef __cpp_lib_byteswap
+  return bSwap ? std::byteswap(value) : value;
+#else
   uint32_t result = 0;
   result |= (value & 0x000000FF) << 24;
   result |= (value & 0x0000FF00) << 8;
   result |= (value & 0x00FF0000) >> 8;
   result |= (value & 0xFF000000) >> 24;
   return bSwap ? result : value;
+#endif
 }
 
 static uint32_t byteSwap_(Exiv2::DataBuf& buf, size_t offset, bool bSwap) {
@@ -51,17 +56,15 @@ static uint32_t byteSwap_(Exiv2::DataBuf& buf, size_t offset, bool bSwap) {
 
 PgfImage::PgfImage(BasicIo::UniquePtr io, bool create) :
     Image(ImageType::pgf, mdExif | mdIptc | mdXmp | mdComment, std::move(io)), bSwap_(isBigEndianPlatform()) {
-  if (create) {
-    if (io_->open() == 0) {
+  if (create && io_->open() == 0) {
 #ifdef EXIV2_DEBUG_MESSAGES
-      std::cerr << "Exiv2::PgfImage:: Creating PGF image to memory\n";
+    std::cerr << "Exiv2::PgfImage:: Creating PGF image to memory\n";
 #endif
-      IoCloser closer(*io_);
-      if (io_->write(pgfBlank, sizeof(pgfBlank)) != sizeof(pgfBlank)) {
+    IoCloser closer(*io_);
+    if (io_->write(pgfBlank, sizeof(pgfBlank)) != sizeof(pgfBlank)) {
 #ifdef EXIV2_DEBUG_MESSAGES
-        std::cerr << "Exiv2::PgfImage:: Failed to create PGF image on memory\n";
+      std::cerr << "Exiv2::PgfImage:: Failed to create PGF image on memory\n";
 #endif
-      }
     }
   }
 }  // PgfImage::PgfImage
@@ -89,8 +92,8 @@ void PgfImage::readMetadata() {
 
   // And now, the most interesting, the user data byte array where metadata are stored as small image.
 
-  enforce(headerSize <= std::numeric_limits<size_t>::max() - 8, ErrorCode::kerCorruptedMetadata);
-  size_t size = headerSize + 8 - static_cast<size_t>(io_->tell());
+  Internal::enforce(headerSize <= std::numeric_limits<size_t>::max() - 8, ErrorCode::kerCorruptedMetadata);
+  size_t size = headerSize + 8 - io_->tell();
 
 #ifdef EXIV2_DEBUG_MESSAGES
   std::cout << "Exiv2::PgfImage::readMetadata: Found Image data (" << size << " bytes)\n";
@@ -151,7 +154,8 @@ void PgfImage::doWriteMetadata(BasicIo& outIo) {
 
   readPgfHeaderSize(*io_);
 
-  uint32_t w = 0, h = 0;
+  uint32_t w = 0;
+  uint32_t h = 0;
   DataBuf header = readPgfHeaderStructure(*io_, w, h);
 
   auto img = ImageFactory::create(ImageType::png);
@@ -180,7 +184,7 @@ void PgfImage::doWriteMetadata(BasicIo& outIo) {
   // Write new Header size.
   auto newHeaderSize = static_cast<uint32_t>(header.size() + imgSize);
   DataBuf buffer(4);
-  std::copy_n(&newHeaderSize, 4, buffer.data());
+  std::copy_n(&newHeaderSize, sizeof(uint32_t), buffer.data());
   byteSwap_(buffer, 0, bSwap_);
   if (outIo.write(buffer.c_data(), 4) != 4)
     throw Error(ErrorCode::kerImageWriteFailed);
@@ -205,10 +209,11 @@ void PgfImage::doWriteMetadata(BasicIo& outIo) {
   // Copy the rest of PGF image data.
 
   DataBuf buf(4096);
-  size_t readSize = 0;
-  while ((readSize = io_->read(buf.data(), buf.size()))) {
+  size_t readSize = io_->read(buf.data(), buf.size());
+  while (readSize != 0) {
     if (outIo.write(buf.c_data(), readSize) != readSize)
       throw Error(ErrorCode::kerImageWriteFailed);
+    readSize = io_->read(buf.data(), buf.size());
   }
   if (outIo.error())
     throw Error(ErrorCode::kerImageWriteFailed);
@@ -216,7 +221,7 @@ void PgfImage::doWriteMetadata(BasicIo& outIo) {
 }  // PgfImage::doWriteMetadata
 
 byte PgfImage::readPgfMagicNumber(BasicIo& iIo) {
-  byte b = iIo.getb();
+  auto b = static_cast<byte>(iIo.getb());
   if (iIo.error())
     throw Error(ErrorCode::kerFailedToReadImageData);
 
@@ -269,11 +274,10 @@ DataBuf PgfImage::readPgfHeaderStructure(BasicIo& iIo, uint32_t& width, uint32_t
   byte bpp      = buffer.pData_[10];
   byte channels = buffer.pData_[11];
   */
-  byte mode = header.read_uint8(12);
 
-  if (mode == 2)  // Indexed color image. We pass color table (256 * 3 bytes).
+  if (header.read_uint8(12) == 2)  // Indexed color image. We pass color table (256 * 3 bytes).
   {
-    header.alloc(16 + 256 * 3);
+    header.alloc(16 + (256 * 3));
 
     bufRead = iIo.read(header.data(16), 256 * 3);
     if (iIo.error())
@@ -290,7 +294,7 @@ DataBuf PgfImage::readPgfHeaderStructure(BasicIo& iIo, uint32_t& width, uint32_t
 Image::UniquePtr newPgfInstance(BasicIo::UniquePtr io, bool create) {
   auto image = std::make_unique<PgfImage>(std::move(io), create);
   if (!image->good()) {
-    image.reset();
+    return nullptr;
   }
   return image;
 }

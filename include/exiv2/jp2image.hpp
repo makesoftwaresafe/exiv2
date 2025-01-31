@@ -50,13 +50,13 @@ class EXIV2API Jp2Image : public Image {
           not valid (does not look like data of the specific image type).
     @warning This function is not thread safe and intended for exiv2 -pS for debugging.
    */
-  void printStructure(std::ostream& out, PrintStructureOption option, int depth) override;
+  void printStructure(std::ostream& out, PrintStructureOption option, size_t depth) override;
 
   /*!
     @brief Todo: Not supported yet(?). Calling this function will throw
         an instance of Error(ErrorCode::kerInvalidSettingForImage).
    */
-  void setComment(std::string_view comment) override;
+  void setComment(const std::string&) override;
   //@}
 
   //! @name Accessors
@@ -64,32 +64,27 @@ class EXIV2API Jp2Image : public Image {
   [[nodiscard]] std::string mimeType() const override;
   //@}
 
-  ~Jp2Image() override = default;
-  //! @name NOT Implemented
-  //@{
-  //! Copy constructor
-  Jp2Image(const Jp2Image&) = delete;
-  //! Assignment operator
-  Jp2Image& operator=(const Jp2Image&) = delete;
-
  private:
   /*!
     @brief Provides the main implementation of writeMetadata() by
           writing all buffered metadata to the provided BasicIo.
-    @param oIo BasicIo instance to write to (a temporary location).
+    @throw Error on input-output errors or when the image data is not valid.
+    @param outIo BasicIo instance to write to (a temporary location).
 
-    @return 4 if opening or writing to the associated BasicIo fails
    */
   void doWriteMetadata(BasicIo& outIo);
 
   /*!
    @brief reformats the Jp2Header to store iccProfile
-   @param oldData DataBufRef to data in the file.
-   @param newData DataBufRef with updated data
+   @param boxBuf DataBufRef to data in the file.
+   @param outBuf DataBufRef with updated data
    */
   void encodeJp2Header(const DataBuf& boxBuf, DataBuf& outBuf);
   //@}
 
+  static std::string toAscii(uint32_t n);
+
+  uint32_t brand_{0};
 };  // class Jp2Image
 
 // *****************************************************************************

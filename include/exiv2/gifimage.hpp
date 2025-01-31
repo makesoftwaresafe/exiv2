@@ -21,15 +21,6 @@ namespace Exiv2 {
  */
 class EXIV2API GifImage : public Image {
  public:
-  ~GifImage() override = default;
-  //! @name NOT Implemented
-  //@{
-  //! Copy constructor
-  GifImage(const GifImage&) = delete;
-  //! Assignment operator
-  GifImage& operator=(const GifImage&) = delete;
-  //@}
-
   //! @name Creators
   //@{
   /*!
@@ -69,7 +60,7 @@ class EXIV2API GifImage : public Image {
     @brief Not supported. Calling this function will throw an instance
         of Error(ErrorCode::kerInvalidSettingForImage).
    */
-  void setComment(std::string_view comment) override;
+  void setComment(const std::string&) override;
   //@}
 
   //! @name Accessors

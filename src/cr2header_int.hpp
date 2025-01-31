@@ -7,8 +7,8 @@
            <a href="mailto:ahuggel@gmx.net">ahuggel@gmx.net</a>
   @date    23-Apr-08, ahu: created
  */
-#ifndef CR2IMAGE_INT_HPP_
-#define CR2IMAGE_INT_HPP_
+#ifndef EXIV2_CR2HEADER_INT_HPP
+#define EXIV2_CR2HEADER_INT_HPP
 
 // *****************************************************************************
 // included header files
@@ -27,8 +27,6 @@ class Cr2Header : public TiffHeaderBase {
   //@{
   //! Default constructor
   explicit Cr2Header(ByteOrder byteOrder = littleEndian);
-  //! Destructor.
-  ~Cr2Header() override = default;
   //@}
 
   //! @name Manipulators
@@ -51,8 +49,8 @@ class Cr2Header : public TiffHeaderBase {
   // DATA
   uint32_t offset2_{0x00000000};             //!< Bytes 12-15 from the header
   static constexpr auto cr2sig_ = "CR\2\0";  //!< Signature for CR2 type TIFF
-};                                           // class Cr2Header
+};
 
 }  // namespace Exiv2::Internal
 
-#endif  // #ifndef CR2IMAGE_INT_HPP_
+#endif  // EXIV2_CR2HEADER_INT_HPP

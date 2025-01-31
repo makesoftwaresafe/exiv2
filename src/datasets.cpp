@@ -11,9 +11,10 @@
 #include "i18n.h"  // NLS support.
 #include "types.hpp"
 
+#include "image_int.hpp"
+
 #include <array>
 #include <iomanip>
-#include <regex>
 #include <sstream>
 
 // *****************************************************************************
@@ -21,10 +22,10 @@
 
 namespace Exiv2 {
 constexpr auto familyName_ = "Iptc";
-constexpr auto recordInfo_ = std::array{
-    RecordInfo{IptcDataSets::invalidRecord, "(invalid)", N_("(invalid)")},
-    RecordInfo{IptcDataSets::envelope, "Envelope", N_("IIM envelope record")},
-    RecordInfo{IptcDataSets::application2, "Application2", N_("IIM application record 2")},
+constexpr RecordInfo recordInfo_[] = {
+    {IptcDataSets::invalidRecord, "(invalid)", N_("(invalid)")},
+    {IptcDataSets::envelope, "Envelope", N_("IIM envelope record")},
+    {IptcDataSets::application2, "Application2", N_("IIM application record 2")},
 };
 
 constexpr DataSet envelopeRecord[] = {
@@ -408,13 +409,10 @@ TypeId IptcDataSets::dataSetType(uint16_t number, uint16_t recordId) {
 }
 
 std::string IptcDataSets::dataSetName(uint16_t number, uint16_t recordId) {
-  int idx = dataSetIdx(number, recordId);
-  if (idx != -1)
+  if (int idx = dataSetIdx(number, recordId); idx != -1)
     return records_[recordId][idx].name_;
 
-  std::ostringstream os;
-  os << "0x" << std::setw(4) << std::setfill('0') << std::right << std::hex << number;
-  return os.str();
+  return stringFormat("0x{:04x}", number);
 }
 
 const char* IptcDataSets::dataSetTitle(uint16_t number, uint16_t recordId) {
@@ -447,8 +445,7 @@ bool IptcDataSets::dataSetRepeatable(uint16_t number, uint16_t recordId) {
 
 uint16_t IptcDataSets::dataSet(const std::string& dataSetName, uint16_t recordId) {
   uint16_t dataSet = 0;
-  int idx = dataSetIdx(dataSetName, recordId);
-  if (idx != -1) {
+  if (int idx = dataSetIdx(dataSetName, recordId); idx != -1) {
     // dataSetIdx checks the range of recordId
     dataSet = records_[recordId][idx].number_;
   } else {
@@ -465,9 +462,7 @@ std::string IptcDataSets::recordName(uint16_t recordId) {
     return recordInfo_[recordId].name_;
   }
 
-  std::ostringstream os;
-  os << "0x" << std::setw(4) << std::setfill('0') << std::right << std::hex << recordId;
-  return os.str();
+  return stringFormat("0x{:04x}", recordId);
 }
 
 const char* IptcDataSets::recordDesc(uint16_t recordId) {
@@ -500,15 +495,12 @@ void IptcDataSets::dataSetList(std::ostream& os) {
   }
 }
 
-IptcKey::IptcKey(std::string key) : key_(std::move(key)) {
+IptcKey::IptcKey(std::string key) : tag_(0), record_(0), key_(std::move(key)) {
   decomposeKey();
 }
 
 IptcKey::IptcKey(uint16_t tag, uint16_t record) : tag_(tag), record_(record) {
   makeKey();
-}
-
-IptcKey::IptcKey(const IptcKey& rhs) : Key(), tag_(rhs.tag_), record_(rhs.record_), key_(rhs.key_) {
 }
 
 std::string IptcKey::key() const {
@@ -529,6 +521,10 @@ std::string IptcKey::tagName() const {
 
 std::string IptcKey::tagLabel() const {
   return IptcDataSets::dataSetTitle(tag_, record_);
+}
+
+std::string IptcKey::tagDesc() const {
+  return IptcDataSets::dataSetDesc(tag_, record_);
 }
 
 uint16_t IptcKey::tag() const {
@@ -553,20 +549,17 @@ IptcKey* IptcKey::clone_() const {
 
 void IptcKey::decomposeKey() {
   // Check that the key has the expected format with RE
-  static const std::regex re(R"((\w+)(\.\w+){2})");
-  std::smatch sm;
-  if (!std::regex_match(key_, sm, re)) {
+  auto posDot1 = key_.find('.');
+  auto posDot2 = key_.find('.', posDot1 + 1);
+
+  if (posDot1 == std::string::npos || posDot2 == std::string::npos) {
     throw Error(ErrorCode::kerInvalidKey, key_);
   }
 
   // Get the family name, record name and dataSet name parts of the key
-  auto posDot1 = key_.find('.');
-  auto posDot2 = key_.find('.', posDot1 + 1);
-
   const std::string familyName = key_.substr(0, posDot1);
-  if (0 != strcmp(familyName.c_str(), familyName_)) {
+  if (familyName != familyName_)
     throw Error(ErrorCode::kerInvalidKey, key_);
-  }
 
   std::string recordName = key_.substr(posDot1 + 1, posDot2 - posDot1 - 1);
   std::string dataSetName = key_.substr(posDot2 + 1);
